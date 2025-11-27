@@ -1,7 +1,7 @@
 [project]
-name = "anibridge-example-provider"
+name = "anibridge-mal-provider"
 version = "0.1.0"
-description = "Example provider for the AniBridge project."
+description = "MAL provider for the AniBridge project."
 readme = "README.md"
 requires-python = ">=3.14"
 
@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [tool.hatch.build]
-packages = ["src/anibridge_example_provider"]
+packages = ["src/anibridge_mal_provider"]
 
 [tool.hatch.metadata]
 allow-direct-references = true

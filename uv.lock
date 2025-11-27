@@ -3,7 +3,20 @@ revision = 3
 requires-python = ">=3.14"
 
 [[package]]
-name = "anibridge-example-provider"
+name = "anibridge-library-interface"
+version = "0.1.0"
+source = { git = "https://github.com/anibridge/anibridge-library-interface.git#c5cedaf1d96205e4e998c6979a72c8c5d1381a95" }
+dependencies = [
+    { name = "starlette" },
+]
+
+[[package]]
+name = "anibridge-list-interface"
+version = "0.1.0"
+source = { git = "https://github.com/anibridge/anibridge-list-interface.git#cb31aeb1a328489bb7100d2f654158d3bddd20eb" }
+
+[[package]]
+name = "anibridge-mal-provider"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
@@ -36,19 +49,6 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "ruff", specifier = ">=0.14.4" },
 ]
-
-[[package]]
-name = "anibridge-library-interface"
-version = "0.1.0"
-source = { git = "https://github.com/anibridge/anibridge-library-interface.git#c5cedaf1d96205e4e998c6979a72c8c5d1381a95" }
-dependencies = [
-    { name = "starlette" },
-]
-
-[[package]]
-name = "anibridge-list-interface"
-version = "0.1.0"
-source = { git = "https://github.com/anibridge/anibridge-list-interface.git#cb31aeb1a328489bb7100d2f654158d3bddd20eb" }
 
 [[package]]
 name = "anyio"

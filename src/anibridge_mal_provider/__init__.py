@@ -1,0 +1,1 @@
+"""MAL provider for AniBridge."""
