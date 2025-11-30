@@ -20,8 +20,12 @@ classifiers = [
 ]
 
 dependencies = [
+    "aiohttp>=3.13.2",
     "anibridge-library-interface @ git+https://github.com/anibridge/anibridge-library-interface.git",
     "anibridge-list-interface @ git+https://github.com/anibridge/anibridge-list-interface.git",
+    "async-lru>=2.0.5",
+    "limiter>=0.5.0",
+    "pydantic>=2.12.5",
 ]
 
 [tool.hatch.build]
