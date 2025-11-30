@@ -17,6 +17,7 @@ from anibridge.list import (
     ListUser,
     list_provider,
 )
+from anibridge.list.interfaces import MediaMap
 
 from anibridge_mal_provider.client import MalClient
 from anibridge_mal_provider.models import (
@@ -302,6 +303,11 @@ class MalListProvider(ListProvider):
             raise ValueError("Entry key does not match the provided key")
         payload = self._build_media_payload(entry)
         await self._client.update_anime_entry(int(entry.key), payload)
+
+    def resolve_map(self, media_map: MediaMap) -> str | None:
+        """Resolve a MediaMap to a MAL media key, if possible."""
+        # TODO: is there an inexpensive way to more thoroughly resolve?
+        return str(media_map.mal_id[0]) if media_map.mal_id else None
 
     async def clear_cache(self) -> None:
         """Drop any cached MAL media payloads."""
