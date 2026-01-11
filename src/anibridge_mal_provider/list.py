@@ -26,6 +26,8 @@ from anibridge_mal_provider.client import (
 
 __all__ = ["MalListProvider"]
 
+_DEFAULT_CLIENT_ID = "b11a4e1ead0db8142268906b4bb676a4"
+
 
 def _mal_status_to_list(status: MalListStatus | str | None) -> ListStatus | None:
     if status is None:
@@ -250,8 +252,8 @@ class MalListProvider(ListProvider):
     def __init__(self, *, config: dict | None = None) -> None:
         """Create the MAL list provider with required credentials."""
         self.config = config or {}
-        client_id = self.config.get("client_id")
-        refresh_token = self.config.get("refresh_token")
+        client_id = self.config.get("client_id", _DEFAULT_CLIENT_ID)
+        refresh_token = self.config.get("token")
         if not client_id:
             raise ValueError("MAL client_id must be provided in the configuration")
         if not refresh_token:
