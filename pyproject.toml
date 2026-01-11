@@ -1,7 +1,7 @@
 [project]
-name = "anibridge-example-provider"
+name = "anibridge-mal-provider"
 version = "0.1.0"
-description = "Example provider for the AniBridge project."
+description = "MAL provider for the AniBridge project."
 readme = "README.md"
 requires-python = ">=3.14"
 
@@ -19,7 +19,13 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
-dependencies = ["anibridge-library-base>=0.1.1", "anibridge-list-base>=0.1.1"]
+dependencies = [
+    "aiohttp>=3.13.3",
+    "anibridge-library-base>=0.1.1",
+    "anibridge-list-base>=0.1.1",
+    "limiter>=0.5.0",
+    "pydantic>=2.12.5",
+]
 
 [tool.ruff]
 indent-width = 4
