@@ -17,9 +17,9 @@ from anibridge.list import (
     list_provider,
 )
 
-from anibridge_mal_provider.client import (
+from anibridge_mal_provider.client import MalClient
+from anibridge_mal_provider.models import (
     Anime,
-    MalClient,
     MalListStatus,
     MyAnimeListStatus,
 )
@@ -355,16 +355,8 @@ class MalListProvider(ListProvider):
                 score=item.get("score"),
                 progress=item.get("num_watched_episodes"),
                 is_rewatching=item.get("is_rewatching"),
-                start_date=(
-                    datetime.fromisoformat(item["start_date"]).date()
-                    if item.get("start_date")
-                    else None
-                ),
-                finish_date=(
-                    datetime.fromisoformat(item["finish_date"]).date()
-                    if item.get("finish_date")
-                    else None
-                ),
+                start_date=(MalClient.parse_date(item.get("start_date"))),
+                finish_date=(MalClient.parse_date(item.get("finish_date"))),
                 priority=item.get("priority"),
                 num_times_rewatched=item.get("num_times_rewatched"),
                 rewatch_value=item.get("rewatch_value"),

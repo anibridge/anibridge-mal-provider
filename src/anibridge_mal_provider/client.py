@@ -372,3 +372,24 @@ class MalClient:
                 data=data,
                 retry_count=retry_count + 1,
             )
+
+    @staticmethod
+    def parse_date(value: Any) -> date | None:
+        """Parse a date value from MAL API."""
+        if value in (None, ""):
+            return None
+        if isinstance(value, date):
+            return value
+        if not isinstance(value, str):
+            return None
+        with contextlib.suppress(ValueError):
+            return date.fromisoformat(str(value))
+
+        parts = value.split("-")
+        try:
+            year = int(parts[0])
+            month = int(parts[1]) if len(parts) > 1 else 1
+            day = int(parts[2]) if len(parts) > 2 else 1
+            return date(year, month, day)
+        except (ValueError, IndexError):
+            return None
