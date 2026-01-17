@@ -78,14 +78,26 @@ class MyAnimeListStatus(MalBaseModel):
 
     @field_validator("start_date", "finish_date", mode="before")
     @classmethod
-    def _parse_date(cls, value: Any) -> date | Any:
+    def _parse_date(cls, value: Any) -> date | None | Any:
         if value in (None, ""):
             return None
+        if isinstance(value, datetime):
+            return value.date()
         if isinstance(value, date):
+            return value
+        if not isinstance(value, str):
             return value
         with contextlib.suppress(ValueError):
             return date.fromisoformat(str(value))
-        return value
+
+        parts = value.split("-")
+        try:
+            year = int(parts[0])
+            month = int(parts[1]) if len(parts) > 1 else 1
+            day = int(parts[2]) if len(parts) > 2 else 1
+            return date(year, month, day)
+        except (ValueError, IndexError):
+            return None
 
     @field_validator("updated_at", mode="before")
     @classmethod
@@ -139,14 +151,26 @@ class Anime(MalBaseModel):
 
     @field_validator("start_date", "end_date", mode="before")
     @classmethod
-    def _parse_date(cls, value: Any) -> date | Any:
+    def _parse_date(cls, value: Any) -> date | None | Any:
         if value in (None, ""):
             return None
+        if isinstance(value, datetime):
+            return value.date()
         if isinstance(value, date):
+            return value
+        if not isinstance(value, str):
             return value
         with contextlib.suppress(ValueError):
             return date.fromisoformat(str(value))
-        return value
+
+        parts = value.split("-")
+        try:
+            year = int(parts[0])
+            month = int(parts[1]) if len(parts) > 1 else 1
+            day = int(parts[2]) if len(parts) > 2 else 1
+            return date(year, month, day)
+        except (ValueError, IndexError):
+            return None
 
     @field_validator("created_at", "updated_at", mode="before")
     @classmethod
