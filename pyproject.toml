@@ -1,6 +1,6 @@
 [project]
 name = "anibridge-mal-provider"
-version = "0.1.1"
+version = "0.2.0b1"
 description = "MAL provider for the AniBridge project."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -21,8 +21,7 @@ classifiers = [
 
 dependencies = [
     "aiohttp>=3.13.3",
-    "anibridge-library-base>=0.1.1",
-    "anibridge-list-base>=0.1.1",
+    "anibridge-list-base>=0.2.0b1",
     "limiter>=0.5.0",
     "pydantic>=2.12.5",
 ]

@@ -12,10 +12,10 @@ from anibridge.list import (
     ListProvider,
     ListStatus,
     ListUser,
-    MappingDescriptor,
-    MappingGraph,
+    MappingEdge,
     list_provider,
 )
+from anibridge.list.base import MappingResolution
 
 from anibridge_mal_provider.client import MalClient
 from anibridge_mal_provider.models import (
@@ -328,22 +328,16 @@ class MalListProvider(ListProvider):
 
     def resolve_mappings(
         self,
-        mapping: MappingGraph,
-        *,
-        scope: str | None = None,
-    ) -> MappingDescriptor | None:
-        """Pick the MAL mapping for the current provider scope if present."""
-        for edge in mapping.edges:
+        edges: Sequence[MappingEdge],
+    ) -> Sequence[MappingResolution]:
+        """Pick MAL mappings for the current provider scope if present."""
+        resolutions: list[MappingResolution] = []
+        for edge in edges:
             for descriptor in (edge.source, edge.destination):
-                if descriptor.provider != self.NAMESPACE:
+                if descriptor[0] != "mal":
                     continue
-                if scope and descriptor.scope != scope:
-                    continue
-                return descriptor
-        for descriptor in mapping.descriptors():
-            if descriptor.provider == self.NAMESPACE:
-                return descriptor
-        return None
+                resolutions.append(MappingResolution(descriptor=descriptor, edge=edge))
+        return resolutions
 
     async def restore_list(self, backup: str) -> None:
         """Restore list entries from a JSON backup string."""
