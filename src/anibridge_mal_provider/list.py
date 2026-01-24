@@ -385,7 +385,7 @@ class MalListProvider(ListProvider):
         updated: list[MalListEntry | None] = []
         for entry in entries:
             await self.update_entry(entry.media().key, entry)
-            updated.append(cast(MalListEntry, entry))
+            updated.append(await self.get_entry(entry.media().key))
         return updated
 
     async def get_entries_batch(

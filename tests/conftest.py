@@ -134,7 +134,7 @@ async def mal_provider(
     fake_client: _FakeMalClient,
 ) -> AsyncGenerator[MalListProvider]:
     """Yield a MAL list provider wired to the fake client."""
-    provider = MalListProvider(config={"client_id": "id", "refresh_token": "refresh"})
+    provider = MalListProvider(config={"client_id": "id", "token": "refresh"})
     provider._client = fake_client
     await provider.initialize()
     yield provider
