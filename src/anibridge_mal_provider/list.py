@@ -12,10 +12,8 @@ from anibridge.list import (
     ListProvider,
     ListStatus,
     ListUser,
-    MappingEdge,
     list_provider,
 )
-from anibridge.list.base import MappingResolution
 
 from anibridge_mal_provider.client import MalClient
 from anibridge_mal_provider.models import (
@@ -316,28 +314,18 @@ class MalListProvider(ListProvider):
         """Fetch a single entry from cache or by building it on demand."""
         anime = await self._client.get_anime(int(key))
         if anime.my_list_status is None:
-            return None
+            anime.my_list_status = MyAnimeListStatus()
         return MalListEntry(self, anime)
 
-    async def build_entry(self, key: str) -> MalListEntry:
-        """Build an entry from MAL search results using the provided key."""
-        anime = await self._client.get_anime(int(key))
-        if anime.my_list_status is None:
-            anime.my_list_status = MyAnimeListStatus(status=MalListStatus.PLAN_TO_WATCH)
-        return MalListEntry(self, anime)
-
-    def resolve_mappings(
-        self,
-        edges: Sequence[MappingEdge],
-    ) -> Sequence[MappingResolution]:
-        """Pick MAL mappings for the current provider scope if present."""
-        resolutions: list[MappingResolution] = []
-        for edge in edges:
-            for descriptor in (edge.source, edge.destination):
-                if descriptor[0] != "mal":
-                    continue
-                resolutions.append(MappingResolution(descriptor=descriptor, edge=edge))
-        return resolutions
+    async def derive_keys(
+        self, descriptors: Sequence[tuple[str, str, str | None]]
+    ) -> set[str]:
+        """Resolve mapping descriptors into MAL media keys."""
+        return {
+            entry_id
+            for provider, entry_id, _ in descriptors
+            if provider == self.NAMESPACE and entry_id
+        }
 
     async def restore_list(self, backup: str) -> None:
         """Restore list entries from a JSON backup string."""
