@@ -11,6 +11,7 @@ from anibridge.list import (
     ListMediaType,
     ListProvider,
     ListStatus,
+    ListTarget,
     ListUser,
     list_provider,
 )
@@ -246,6 +247,7 @@ class MalListProvider(ListProvider):
     """List provider backed by the MyAnimeList v2 API."""
 
     NAMESPACE = "mal"
+    MAPPING_PROVIDERS = frozenset({"mal"})
 
     def __init__(self, *, config: dict | None = None) -> None:
         """Create the MAL list provider with required credentials."""
@@ -327,6 +329,16 @@ class MalListProvider(ListProvider):
             if provider == self.NAMESPACE and entry_id
         }
 
+    async def resolve_mapping_descriptors(
+        self, descriptors: Sequence[tuple[str, str, str | None]]
+    ) -> Sequence[ListTarget]:
+        """Resolve mapping descriptors into MAL media keys."""
+        return [
+            ListTarget(descriptor=(provider, entry_id, scope), media_key=entry_id)
+            for provider, entry_id, scope in descriptors
+            if provider in self.MAPPING_PROVIDERS and entry_id
+        ]
+
     async def restore_list(self, backup: str) -> None:
         """Restore list entries from a JSON backup string."""
         data = json.loads(backup)
@@ -385,7 +397,7 @@ class MalListProvider(ListProvider):
         updated: list[MalListEntry | None] = []
         for entry in entries:
             await self.update_entry(entry.media().key, entry)
-            updated.append(await self.get_entry(entry.media().key))
+            updated.append(cast(MalListEntry, entry))
         return updated
 
     async def get_entries_batch(
