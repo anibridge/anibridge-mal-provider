@@ -208,9 +208,11 @@ class MalListEntry(ListEntry["MalListProvider"]):
         if value is None:
             self._status.start_date = None
             return
-        self._status.start_date = value.astimezone(
-            self._provider._client.user_timezone
-        ).date()
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=self._provider._client.user_timezone)
+        else:
+            value = value.astimezone(self._provider._client.user_timezone)
+        self._status.start_date = value.date()
 
     @property
     def finished_at(self) -> datetime | None:
@@ -227,9 +229,11 @@ class MalListEntry(ListEntry["MalListProvider"]):
         if value is None:
             self._status.finish_date = None
             return
-        self._status.finish_date = value.astimezone(
-            self._provider._client.user_timezone
-        ).date()
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=self._provider._client.user_timezone)
+        else:
+            value = value.astimezone(self._provider._client.user_timezone)
+        self._status.finish_date = value.date()
 
     @property
     def total_units(self) -> int | None:
