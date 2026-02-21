@@ -85,7 +85,7 @@ wheels = [
 
 [[package]]
 name = "anibridge-mal-provider"
-version = "0.2.0b3"
+version = "0.2.0b4"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
