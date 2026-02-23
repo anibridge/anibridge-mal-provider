@@ -5,11 +5,11 @@ import contextlib
 import importlib.metadata
 from collections.abc import Sequence
 from datetime import UTC, date, tzinfo
-from logging import getLogger
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import aiohttp
+from anibridge.list import ProviderLogger
 from limiter import Limiter
 
 from anibridge_mal_provider.models import (
@@ -21,8 +21,6 @@ from anibridge_mal_provider.models import (
 )
 
 __all__ = ["MalClient"]
-
-_LOG = getLogger(__name__)
 
 TOKEN_URL = "https://myanimelist.net/v1/oauth2/token"
 
@@ -61,10 +59,12 @@ class MalClient:
     def __init__(
         self,
         *,
+        logger: ProviderLogger,
         client_id: str,
         refresh_token: str | None = None,
     ) -> None:
         """Construct the client with the required credentials."""
+        self.log = logger
         self.client_id = client_id
         self.access_token: str | None = None
         self._session: aiohttp.ClientSession | None = None
@@ -349,7 +349,7 @@ class MalClient:
                     response.raise_for_status()
                 except aiohttp.ClientResponseError:
                     response_text = await response.text()
-                    _LOG.error(
+                    self.log.exception(
                         "Failed MAL request %s %s (%s): %s",
                         method,
                         url,
@@ -362,7 +362,7 @@ class MalClient:
                     return {}
                 return await response.json()
 
-        except (TimeoutError, aiohttp.ClientError):
+        except TimeoutError, aiohttp.ClientError:
             await asyncio.sleep(1)
             return await self._make_request(
                 method,
@@ -391,5 +391,5 @@ class MalClient:
             month = int(parts[1]) if len(parts) > 1 else 1
             day = int(parts[2]) if len(parts) > 2 else 1
             return date(year, month, day)
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             return None

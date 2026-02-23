@@ -3,6 +3,7 @@
 import json
 from collections.abc import Sequence
 from datetime import datetime
+from json import JSONDecodeError
 from typing import Any, cast
 
 from anibridge.list import (
@@ -13,6 +14,7 @@ from anibridge.list import (
     ListStatus,
     ListTarget,
     ListUser,
+    ProviderLogger,
     list_provider,
 )
 
@@ -253,30 +255,39 @@ class MalListProvider(ListProvider):
     NAMESPACE = "mal"
     MAPPING_PROVIDERS = frozenset({"mal"})
 
-    def __init__(self, *, config: dict | None = None) -> None:
+    def __init__(self, *, logger: ProviderLogger, config: dict | None = None) -> None:
         """Create the MAL list provider with required credentials."""
-        self.config = config or {}
+        super().__init__(logger=logger, config=config)
         client_id = self.config.get("client_id", _DEFAULT_CLIENT_ID)
         refresh_token = self.config.get("token")
         if not client_id:
+            self.log.warning("MAL client_id is missing from provider configuration")
             raise ValueError("MAL client_id must be provided in the configuration")
         if not refresh_token:
+            self.log.warning("MAL refresh token is missing from provider configuration")
             raise ValueError("MAL refresh_token must be provided in the configuration")
 
-        self._client = MalClient(client_id=client_id, refresh_token=refresh_token)
+        self._client = MalClient(
+            logger=self.log, client_id=client_id, refresh_token=refresh_token
+        )
         self._user: ListUser | None = None
 
     async def initialize(self) -> None:
         """Fetch MAL user info and prepare caches."""
+        self.log.debug("Initializing MAL provider client")
         await self._client.initialize()
         if self._client.user is not None:
             self._user = ListUser(
                 key=str(self._client.user.id),
                 title=self._client.user.name,
             )
+            self.log.debug("MAL provider initialized for user id=%s", self._user.key)
+        else:
+            raise RuntimeError("MAL provider initialized without a resolved user")
 
     async def backup_list(self) -> str:
         """Return a JSON backup of the user's MAL anime list."""
+        self.log.debug("Starting MAL list backup")
         entries: list[dict[str, Any]] = []
         offset = 0
         while True:
@@ -310,11 +321,13 @@ class MalListProvider(ListProvider):
             if page.paging is None or page.paging.next is None:
                 break
             offset += 100
+        self.log.debug("Completed MAL list backup with %s entries", len(entries))
         return json.dumps(entries, separators=(",", ":"))
 
     async def delete_entry(self, key: str) -> None:
         """Delete a list entry by MAL anime id."""
         await self._client.delete_anime_status(int(key))
+        self.log.debug("Deleted MAL entry for anime id %s", key)
 
     async def get_entry(self, key: str) -> MalListEntry | None:
         """Fetch a single entry from cache or by building it on demand."""
@@ -345,7 +358,12 @@ class MalListProvider(ListProvider):
 
     async def restore_list(self, backup: str) -> None:
         """Restore list entries from a JSON backup string."""
-        data = json.loads(backup)
+        try:
+            data = json.loads(backup)
+        except JSONDecodeError:
+            self.log.exception("Failed to decode MAL backup JSON")
+            raise
+        self.log.debug("Restoring MAL backup containing %s entries", len(data))
         for item in data:
             await self._client.update_anime_status(
                 anime_id=int(item["id"]),
@@ -361,10 +379,12 @@ class MalListProvider(ListProvider):
                 tags=item.get("tags"),
                 comments=item.get("comments"),
             )
+            self.log.debug("Finished restoring MAL backup entries")
 
     async def search(self, query: str) -> Sequence[MalListEntry]:
         """Search MAL and return entries with minimal metadata and status."""
         results = await self._client.search_anime(query, limit=10, nsfw=False)
+        self.log.debug("MAL search query=%r yielded %s entries", query, len(results))
         return tuple(MalListEntry(self, anime) for anime in results)
 
     async def update_entry(self, key: str, entry: ListEntry) -> None:
@@ -385,23 +405,28 @@ class MalListProvider(ListProvider):
         )
         mal_entry._status = response
         mal_entry._anime.my_list_status = response
+        self.log.debug("Updated MAL entry for anime id %s", key)
 
     async def clear_cache(self) -> None:
         """Clear cached user/list data."""
         await self._client.clear_cache()
+        self.log.debug("Cleared MAL provider cache")
 
     async def close(self) -> None:
         """Close the underlying MAL client session."""
         await self._client.close()
+        self.log.debug("Closed MAL provider client")
 
     async def update_entries_batch(
         self, entries: Sequence[ListEntry]
     ) -> Sequence[MalListEntry | None]:
         """Batch update list entries sequentially."""
+        self.log.debug("Starting MAL batch update for %s entries", len(entries))
         updated: list[MalListEntry | None] = []
         for entry in entries:
             await self.update_entry(entry.media().key, entry)
             updated.append(cast(MalListEntry, entry))
+        self.log.debug("Completed MAL batch update for %s entries", len(updated))
         return updated
 
     async def get_entries_batch(
@@ -411,6 +436,7 @@ class MalListProvider(ListProvider):
         results: list[MalListEntry | None] = []
         for key in keys:
             results.append(await self.get_entry(key))
+        self.log.debug("Completed MAL batch get for %s keys", len(keys))
         return results
 
     def user(self) -> ListUser | None:
