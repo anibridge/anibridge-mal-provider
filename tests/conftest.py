@@ -7,8 +7,8 @@ from logging import getLogger
 import pytest
 import pytest_asyncio
 
-from anibridge_mal_provider.list import MalListProvider
-from anibridge_mal_provider.models import (
+from anibridge.providers.list.mal.list import MalListProvider
+from anibridge.providers.list.mal.models import (
     Anime,
     AnimePaging,
     AnimePagingData,

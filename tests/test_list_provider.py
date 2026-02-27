@@ -6,12 +6,12 @@ from datetime import UTC, date, datetime
 import pytest
 from anibridge.list import ListStatus
 
-from anibridge_mal_provider.list import (
+from anibridge.providers.list.mal.list import (
     MalListEntry,
     _list_status_to_mal,
     _mal_status_to_list,
 )
-from anibridge_mal_provider.models import Anime, MalListStatus, MyAnimeListStatus
+from anibridge.providers.list.mal.models import Anime, MalListStatus, MyAnimeListStatus
 
 
 def test_status_mapping_helpers() -> None:

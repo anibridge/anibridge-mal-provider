@@ -12,7 +12,7 @@ import aiohttp
 from anibridge.utils.limiter import Limiter
 from anibridge.utils.types import ProviderLogger
 
-from anibridge_mal_provider.models import (
+from anibridge.providers.list.mal.models import (
     Anime,
     AnimePaging,
     MalListStatus,

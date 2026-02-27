@@ -17,8 +17,8 @@ from anibridge.list import (
 )
 from anibridge.utils.types import ProviderLogger
 
-from anibridge_mal_provider.client import MalClient
-from anibridge_mal_provider.models import (
+from anibridge.providers.list.mal.client import MalClient
+from anibridge.providers.list.mal.models import (
     Anime,
     MalListStatus,
     MyAnimeListStatus,
