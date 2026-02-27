@@ -96,7 +96,7 @@ class MyAnimeListStatus(MalBaseModel):
             month = int(parts[1]) if len(parts) > 1 else 1
             day = int(parts[2]) if len(parts) > 2 else 1
             return date(year, month, day)
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             return None
 
     @field_validator("updated_at", mode="before")
@@ -169,7 +169,7 @@ class Anime(MalBaseModel):
             month = int(parts[1]) if len(parts) > 1 else 1
             day = int(parts[2]) if len(parts) > 2 else 1
             return date(year, month, day)
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             return None
 
     @field_validator("created_at", "updated_at", mode="before")
