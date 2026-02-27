@@ -14,9 +14,8 @@ from anibridge.list import (
     ListStatus,
     ListTarget,
     ListUser,
-    ProviderLogger,
-    list_provider,
 )
+from anibridge.utils.types import ProviderLogger
 
 from anibridge_mal_provider.client import MalClient
 from anibridge_mal_provider.models import (
@@ -248,7 +247,6 @@ class MalListEntry(ListEntry["MalListProvider"]):
         return self._provider
 
 
-@list_provider
 class MalListProvider(ListProvider):
     """List provider backed by the MyAnimeList v2 API."""
 

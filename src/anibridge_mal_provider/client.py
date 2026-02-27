@@ -9,8 +9,8 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import aiohttp
-from anibridge.list import ProviderLogger
-from limiter import Limiter
+from anibridge.utils.limiter import Limiter
+from anibridge.utils.types import ProviderLogger
 
 from anibridge_mal_provider.models import (
     Anime,
@@ -24,7 +24,8 @@ __all__ = ["MalClient"]
 
 TOKEN_URL = "https://myanimelist.net/v1/oauth2/token"
 
-mal_limiter = Limiter(rate=1, capacity=1, jitter=False)
+# MAL's rate limit is unknown, but 1 request per second is a safe default
+mal_limiter = Limiter(rate=1, capacity=1)
 
 
 class MalClient:
