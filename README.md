@@ -21,6 +21,6 @@ Your MyAnimeList API refresh token. You can generate one [here](https://anibridg
 
 ### `client_id`
 
-`str` (optional)
+`str` (optional, default: `"b11a4e1ead0db8142268906b4bb676a4"`)
 
 Your MyAnimeList API client ID. This option is for advanced users who want to use their own client ID. If not provided, a default client ID managed by the AniBridge team will be used.
