@@ -18,6 +18,7 @@ from anibridge.list import (
 from anibridge.utils.types import ProviderLogger
 
 from anibridge.providers.list.mal.client import MalClient
+from anibridge.providers.list.mal.config import MalListProviderConfig
 from anibridge.providers.list.mal.models import (
     Anime,
     MalListStatus,
@@ -25,8 +26,6 @@ from anibridge.providers.list.mal.models import (
 )
 
 __all__ = ["MalListProvider"]
-
-_DEFAULT_CLIENT_ID = "b11a4e1ead0db8142268906b4bb676a4"
 
 
 def _mal_status_to_list(status: MalListStatus | str | None) -> ListStatus | None:
@@ -256,17 +255,11 @@ class MalListProvider(ListProvider):
     def __init__(self, *, logger: ProviderLogger, config: dict | None = None) -> None:
         """Create the MAL list provider with required credentials."""
         super().__init__(logger=logger, config=config)
-        client_id = self.config.get("client_id", _DEFAULT_CLIENT_ID)
-        refresh_token = self.config.get("token")
-        if not client_id:
-            self.log.warning("MAL client_id is missing from provider configuration")
-            raise ValueError("MAL client_id must be provided in the configuration")
-        if not refresh_token:
-            self.log.warning("MAL refresh token is missing from provider configuration")
-            raise ValueError("MAL refresh_token must be provided in the configuration")
-
+        self.parsed_config = MalListProviderConfig.model_validate(config or {})
         self._client = MalClient(
-            logger=self.log, client_id=client_id, refresh_token=refresh_token
+            logger=self.log,
+            client_id=self.parsed_config.client_id,
+            refresh_token=self.parsed_config.token,
         )
         self._user: ListUser | None = None
 
