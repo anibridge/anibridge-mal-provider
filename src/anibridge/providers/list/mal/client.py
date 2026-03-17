@@ -293,7 +293,7 @@ class MalClient:
             await self._session.close()
         self._session = None
 
-    @mal_limiter()
+    @mal_limiter
     async def _make_request(
         self,
         method: str,
