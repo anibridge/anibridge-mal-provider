@@ -164,7 +164,7 @@ class MalClient:
         *,
         username: str = "@me",
         status: MalListStatus | str | None = None,
-        limit: int = 100,
+        limit: int = 1000,
         offset: int = 0,
         nsfw: bool = False,
         sort: str | None = None,
@@ -172,7 +172,7 @@ class MalClient:
     ) -> AnimePaging:
         """Fetch a page of anime list entries for a user."""
         params: dict[str, Any] = {
-            "limit": min(max(limit, 1), 100),
+            "limit": min(max(limit, 1), 1000),
             "offset": max(offset, 0),
             "nsfw": str(nsfw).lower(),
             "fields": ",".join(fields or self.DEFAULT_ANIME_FIELDS),

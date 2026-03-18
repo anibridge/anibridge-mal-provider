@@ -282,7 +282,7 @@ class MalListProvider(ListProvider):
         entries: list[dict[str, Any]] = []
         offset = 0
         while True:
-            page = await self._client.get_user_anime_list(offset=offset, limit=100)
+            page = await self._client.get_user_anime_list(offset=offset, limit=1000)
             for item in page.data:
                 status = item.list_status or item.node.my_list_status
                 if status is None:
@@ -311,7 +311,7 @@ class MalListProvider(ListProvider):
                 )
             if page.paging is None or page.paging.next is None:
                 break
-            offset += 100
+            offset += 1000
         self.log.debug("Completed MAL list backup with %s entries", len(entries))
         return json.dumps(entries, separators=(",", ":"))
 

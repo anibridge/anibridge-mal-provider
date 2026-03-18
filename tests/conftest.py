@@ -57,7 +57,7 @@ class _FakeMalClient:
         *,
         username: str = "@me",
         status: MalListStatus | str | None = None,
-        limit: int = 100,
+        limit: int = 1000,
         offset: int = 0,
         nsfw: bool = False,
         sort: str | None = None,
