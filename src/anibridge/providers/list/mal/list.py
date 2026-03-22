@@ -290,23 +290,7 @@ class MalListProvider(ListProvider):
                 entries.append(
                     {
                         "id": item.node.id,
-                        "status": status.status,
-                        "score": status.score,
-                        "num_watched_episodes": status.num_episodes_watched,
-                        "is_rewatching": status.is_rewatching,
-                        "start_date": (
-                            status.start_date.isoformat() if status.start_date else None
-                        ),
-                        "finish_date": (
-                            status.finish_date.isoformat()
-                            if status.finish_date
-                            else None
-                        ),
-                        "priority": status.priority,
-                        "num_times_rewatched": status.num_times_rewatched,
-                        "rewatch_value": status.rewatch_value,
-                        "tags": status.tags,
-                        "comments": status.comments,
+                        **status.model_dump(mode="json", exclude_none=True),
                     }
                 )
             if page.paging is None or page.paging.next is None:
@@ -356,21 +340,23 @@ class MalListProvider(ListProvider):
             raise
         self.log.debug("Restoring MAL backup containing %s entries", len(data))
         for item in data:
+            anime_id = int(item.pop("id"))
+            status = MyAnimeListStatus.model_validate(item)
             await self._client.update_anime_status(
-                anime_id=int(item["id"]),
-                status=item.get("status"),
-                score=item.get("score"),
-                progress=item.get("num_watched_episodes"),
-                is_rewatching=item.get("is_rewatching"),
-                start_date=(MalClient.parse_date(item.get("start_date"))),
-                finish_date=(MalClient.parse_date(item.get("finish_date"))),
-                priority=item.get("priority"),
-                num_times_rewatched=item.get("num_times_rewatched"),
-                rewatch_value=item.get("rewatch_value"),
-                tags=item.get("tags"),
-                comments=item.get("comments"),
+                anime_id=anime_id,
+                status=status.status,
+                score=status.score,
+                progress=status.num_episodes_watched,
+                is_rewatching=status.is_rewatching,
+                start_date=status.start_date,
+                finish_date=status.finish_date,
+                priority=status.priority,
+                num_times_rewatched=status.num_times_rewatched,
+                rewatch_value=status.rewatch_value,
+                tags=status.tags,
+                comments=status.comments,
             )
-            self.log.debug("Finished restoring MAL backup entries")
+        self.log.debug("Finished restoring MAL backup entries")
 
     async def search(self, query: str) -> Sequence[MalListEntry]:
         """Search MAL and return entries with minimal metadata and status."""
