@@ -119,10 +119,10 @@ class MalClient:
         query: str,
         *,
         limit: int = 10,
-        nsfw: bool = False,
+        nsfw: bool = True,
         fields: Sequence[str] | None = None,
     ) -> list[Anime]:
-        """Search anime by title with optional NSFW filtering."""
+        """Search anime by title."""
         effective_fields = fields or self.DEFAULT_ANIME_FIELDS
         params = {
             "q": query,
@@ -166,7 +166,7 @@ class MalClient:
         status: MalListStatus | str | None = None,
         limit: int = 1000,
         offset: int = 0,
-        nsfw: bool = False,
+        nsfw: bool = True,
         sort: str | None = None,
         fields: Sequence[str] | None = None,
     ) -> AnimePaging:
