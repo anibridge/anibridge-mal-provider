@@ -9,6 +9,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import aiohttp
+from anibridge.utils.cache import ttl_cache
 from anibridge.utils.limiter import Limiter
 from anibridge.utils.types import ProviderLogger
 
@@ -104,6 +105,7 @@ class MalClient:
         if self.user and self.user.time_zone:
             with contextlib.suppress(Exception):
                 self.user_timezone = ZoneInfo(self.user.time_zone)
+        await self.get_user_anime_list()  # Preload anime list into cache
 
     async def get_user(self, username: str = "@me") -> User:
         """Fetch user info for the given username (defaulting to self)."""
@@ -159,6 +161,7 @@ class MalClient:
         self.offline_anime_entries[anime.id] = anime
         return anime
 
+    @ttl_cache(ttl=60)  # Because `initialize()` and `backup_list()` will duplicate work
     async def get_user_anime_list(
         self,
         *,
