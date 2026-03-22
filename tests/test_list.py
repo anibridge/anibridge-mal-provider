@@ -8,10 +8,17 @@ from anibridge.list import ListStatus
 
 from anibridge.providers.list.mal.list import (
     MalListEntry,
+    MalListMedia,
     _list_status_to_mal,
     _mal_status_to_list,
 )
-from anibridge.providers.list.mal.models import Anime, MalListStatus, MyAnimeListStatus
+from anibridge.providers.list.mal.models import (
+    Anime,
+    MalListStatus,
+    MyAnimeListStatus,
+    Picture,
+    Season,
+)
 
 
 def test_status_mapping_helpers() -> None:
@@ -27,7 +34,32 @@ def test_status_mapping_helpers() -> None:
     status, rewatching = _list_status_to_mal(ListStatus.DROPPED)
     assert status is MalListStatus.DROPPED
     assert rewatching is False
+    status, rewatching = _list_status_to_mal(ListStatus.PAUSED)
+    assert status is MalListStatus.ON_HOLD
+    assert rewatching is False
+    status, rewatching = _list_status_to_mal(ListStatus.PLANNING)
+    assert status is MalListStatus.PLAN_TO_WATCH
+    assert rewatching is False
     assert _list_status_to_mal(None) == (None, False)
+
+
+def test_media_metadata_helpers() -> None:
+    """MalListMedia should expose normalized labels, urls, and media attributes."""
+    anime = Anime(
+        id=501,
+        title="Media Test",
+        media_type="movie",
+        status="finished_airing",
+        start_season=Season(year=2024, season="spring"),
+        main_picture=Picture(large=None, medium="https://img.medium"),
+        num_episodes=None,
+    )
+    media = MalListMedia(provider=None, anime=anime)  # type: ignore[arg-type]
+
+    assert media.external_url == "https://myanimelist.net/anime/501"
+    assert media.labels == ["Spring 2024", "Movie", "Finished Airing"]
+    assert media.total_units == 1
+    assert media.poster_image == "https://img.medium"
 
 
 @pytest.mark.asyncio
