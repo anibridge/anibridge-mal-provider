@@ -59,6 +59,7 @@ class MalClient:
         "my_list_status{status,score,num_episodes_watched,is_rewatching,start_date,"
         "finish_date,priority,num_times_rewatched,rewatch_value,tags,comments,updated_at}",
     )
+    DEFAULT_ANIME_FIELDS_CSV = ",".join(DEFAULT_ANIME_FIELDS)
 
     def __init__(
         self,
@@ -184,7 +185,13 @@ class MalClient:
         fields: Sequence[str] | None = None,
     ) -> list[Anime]:
         """Search anime by title."""
-        return await self._search_anime(query, limit=limit, nsfw=nsfw, fields=fields)
+        normalized_fields = tuple(fields) if fields is not None else None
+        return await self._search_anime(
+            query,
+            limit=min(max(limit, 1), 100),
+            nsfw=nsfw,
+            fields=normalized_fields,
+        )
 
     @ttl_cache(ttl=300)
     async def _search_anime(
@@ -193,15 +200,19 @@ class MalClient:
         *,
         limit: int = 10,
         nsfw: bool = True,
-        fields: Sequence[str] | None = None,
+        fields: tuple[str, ...] | None = None,
     ) -> list[Anime]:
         """Cached helper for anime title searches."""
         effective_fields = fields or self.DEFAULT_ANIME_FIELDS
         params = {
             "q": query,
-            "limit": min(max(limit, 1), 100),
+            "limit": limit,
             "nsfw": str(nsfw).lower(),
-            "fields": ",".join(effective_fields),
+            "fields": (
+                self.DEFAULT_ANIME_FIELDS_CSV
+                if effective_fields is self.DEFAULT_ANIME_FIELDS
+                else ",".join(effective_fields)
+            ),
         }
         response = await self._make_request("GET", "/anime", params=params)
         paging = AnimePaging(**response)
@@ -236,8 +247,11 @@ class MalClient:
         fields: Sequence[str] | None = None,
     ) -> Anime:
         """Fetch an anime from the MAL API and populate caches."""
-        effective_fields = fields or self.DEFAULT_ANIME_FIELDS
-        params = {"fields": ",".join(effective_fields)}
+        params = {
+            "fields": (
+                self.DEFAULT_ANIME_FIELDS_CSV if fields is None else ",".join(fields)
+            )
+        }
         self.log.debug(f"Pulling MAL data from API $${{mal_id: {anime_id}}}$$")
         response = await self._make_request("GET", f"/anime/{anime_id}", params=params)
         anime = Anime(**response)
@@ -256,6 +270,7 @@ class MalClient:
         fields: Sequence[str] | None = None,
     ) -> AnimePaging:
         """Fetch a page of anime list entries for a user."""
+        normalized_fields = tuple(fields) if fields is not None else None
         page = await self._get_user_anime_list_page(
             username=username,
             status=status,
@@ -263,7 +278,7 @@ class MalClient:
             offset=offset,
             nsfw=nsfw,
             sort=sort,
-            fields=fields,
+            fields=normalized_fields,
         )
         for item in page.data:
             anime = item.node
@@ -324,14 +339,16 @@ class MalClient:
         offset: int = 0,
         nsfw: bool = True,
         sort: str | None = None,
-        fields: Sequence[str] | None = None,
+        fields: tuple[str, ...] | None = None,
     ) -> AnimePaging:
         """Cached helper that fetches one user anime-list page."""
         params: dict[str, Any] = {
             "limit": min(max(limit, 1), 1000),
             "offset": max(offset, 0),
             "nsfw": str(nsfw).lower(),
-            "fields": ",".join(fields or self.DEFAULT_ANIME_FIELDS),
+            "fields": (
+                self.DEFAULT_ANIME_FIELDS_CSV if fields is None else ",".join(fields)
+            ),
         }
         if status:
             params["status"] = (
