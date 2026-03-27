@@ -78,6 +78,7 @@ class MalClient:
         self.user_timezone: tzinfo = UTC
 
         self._bg_task: asyncio.Task[AnimePaging] | None = None
+        self._cache_epoch = 0
         self._list_cache: dict[int, Anime] = {}
         self._media_cache: TTLDict[int, Anime] = TTLDict(ttl=43200)
 
@@ -108,11 +109,16 @@ class MalClient:
         """Clear in-memory caches for user list and general media lookups."""
         self._list_cache.clear()
         self._media_cache.clear()
+        self._invalidate_cached_views()
+
+    def _invalidate_cached_views(self) -> None:
+        """Invalidate derived cached views after list-state changes."""
+        self._cache_epoch += 1
         if (task := self._bg_task) and not task.done():
             task.cancel()
         self._bg_task = None
         with contextlib.suppress(AttributeError):
-            self._fetch_user_anime_list.cache_clear()
+            self._fetch_list_collection.cache_clear()
         with contextlib.suppress(AttributeError):
             self._search_anime.cache_clear()
 
@@ -126,7 +132,7 @@ class MalClient:
             with contextlib.suppress(Exception):
                 self.user_timezone = ZoneInfo(self.user.time_zone)
 
-        await self._fetch_user_anime_list()
+        await self._fetch_list_collection()
 
     def _cached(self, anime_id: int) -> Anime | None:
         """Return anime from user-list cache or general TTL cache."""
@@ -137,14 +143,17 @@ class MalClient:
 
     def _remember(self, anime: Anime) -> None:
         """Store anime in shared caches."""
-        self._media_cache[anime.id] = anime
-        if anime.my_list_status is not None:
+        # Keep the long-lived TTL cache free of user-specific list state.
+        self._media_cache[anime.id] = anime.model_copy(update={"my_list_status": None})
+        if anime.my_list_status is None:
+            self._list_cache.pop(anime.id, None)
+        else:
             self._list_cache[anime.id] = anime
 
     def _schedule_list_refresh(self) -> None:
         """Schedule a background refresh when the user-list cache is stale.
 
-        The @ttl_cache on _fetch_user_anime_list returns instantly from cache
+        The @ttl_cache on _fetch_list_collection returns instantly from cache
         when fresh, so this is a no-op in the common case.
         """
         if (task := self._bg_task) and not task.done():
@@ -154,7 +163,7 @@ class MalClient:
             if not t.cancelled() and (exc := t.exception()):
                 self.log.warning("User-list cache refresh failed", exc_info=exc)
 
-        self._bg_task = task = asyncio.create_task(self._fetch_user_anime_list())
+        self._bg_task = task = asyncio.create_task(self._fetch_list_collection())
         task.add_done_callback(_on_done)
 
     async def get_user(self, username: str = "@me") -> User:
@@ -247,7 +256,7 @@ class MalClient:
         fields: Sequence[str] | None = None,
     ) -> AnimePaging:
         """Fetch a page of anime list entries for a user."""
-        return await self._fetch_user_anime_list(
+        page = await self._get_user_anime_list_page(
             username=username,
             status=status,
             limit=limit,
@@ -256,9 +265,57 @@ class MalClient:
             sort=sort,
             fields=fields,
         )
+        for item in page.data:
+            anime = item.node
+            if item.list_status is not None:
+                anime.my_list_status = item.list_status
+            self._remember(anime)
+        return page
 
     @ttl_cache(ttl=3600)
-    async def _fetch_user_anime_list(
+    async def _fetch_list_collection(self) -> AnimePaging:
+        """Fetch all user list pages and atomically refresh list cache."""
+        if not self.user:
+            raise aiohttp.ClientError("User information is required for list refresh")
+
+        self.log.debug("Refreshing user anime list cache from MAL API")
+
+        refresh_epoch = self._cache_epoch
+        refreshed_list_cache: dict[int, Anime] = {}
+
+        data = AnimePaging(data=[], paging=None)
+        offset = 0
+        while True:
+            page = await self._get_user_anime_list_page(offset=offset, limit=1000)
+            if refresh_epoch != self._cache_epoch:
+                return data
+
+            data.data.extend(page.data)
+            for item in page.data:
+                anime = item.node
+                if item.list_status is not None:
+                    anime.my_list_status = item.list_status
+                if anime.my_list_status is not None:
+                    refreshed_list_cache[anime.id] = anime
+                self._remember(anime)
+
+            if page.paging is None or page.paging.next is None:
+                break
+            offset += 1000
+
+        if refresh_epoch != self._cache_epoch:
+            return data
+
+        self._list_cache.clear()
+        self._list_cache.update(refreshed_list_cache)
+
+        with contextlib.suppress(AttributeError):
+            self._search_anime.cache_clear()
+
+        return data
+
+    @ttl_cache(ttl=3600)
+    async def _get_user_anime_list_page(
         self,
         *,
         username: str = "@me",
@@ -269,7 +326,7 @@ class MalClient:
         sort: str | None = None,
         fields: Sequence[str] | None = None,
     ) -> AnimePaging:
-        """Cached helper that fetches user anime list and populates caches."""
+        """Cached helper that fetches one user anime-list page."""
         params: dict[str, Any] = {
             "limit": min(max(limit, 1), 1000),
             "offset": max(offset, 0),
@@ -283,21 +340,12 @@ class MalClient:
         if sort:
             params["sort"] = sort
 
-        self.log.debug("Refreshing user anime list cache from MAL API")
-        self._list_cache.clear()
-
         response = await self._make_request(
             "GET",
             f"/users/{username}/animelist",
             params=params,
         )
-        paging = AnimePaging(**response)
-        for item in paging.data:
-            anime = item.node
-            if item.list_status is not None:
-                anime.my_list_status = item.list_status
-            self._remember(anime)
-        return paging
+        return AnimePaging(**response)
 
     async def update_anime_status(
         self,
@@ -351,9 +399,13 @@ class MalClient:
             data=payload,
         )
         status_payload = response.get("my_list_status", response)
-        self._list_cache.pop(anime_id, None)
+        list_status = MyAnimeListStatus(**status_payload)
+        if cached := self._cached(anime_id):
+            cached.my_list_status = list_status
+            self._list_cache[anime_id] = cached
         self._media_cache.clear()
-        return MyAnimeListStatus(**status_payload)
+        self._invalidate_cached_views()
+        return list_status
 
     async def delete_anime_status(self, anime_id: int) -> None:
         """Remove a user's anime list entry."""
@@ -363,8 +415,7 @@ class MalClient:
         await self._make_request("DELETE", f"/anime/{anime_id}/my_list_status")
         self._list_cache.pop(anime_id, None)
         self._media_cache.pop(anime_id, None)
-
-    # ── Auth ────────────────────────────────────────────────
+        self._invalidate_cached_views()
 
     async def refresh_access_token(self) -> None:
         """Refresh the access token using the stored refresh credentials."""

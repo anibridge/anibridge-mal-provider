@@ -102,7 +102,7 @@ async def test_initialize_sets_user_timezone_and_primes_cache(
     mal_client._list_cache = {99: Anime(id=99, title="Old")}
     monkeypatch.setattr(mal_client, "refresh_access_token", fake_refresh)
     monkeypatch.setattr(mal_client, "get_user", fake_get_user)
-    monkeypatch.setattr(mal_client, "_fetch_user_anime_list", fake_fetch_list)
+    monkeypatch.setattr(mal_client, "_fetch_list_collection", fake_fetch_list)
 
     await mal_client.initialize()
 
@@ -158,7 +158,7 @@ async def test_get_anime_cache_and_force_refresh(
     async def fake_fetch_list(**kwargs: Any):
         return SimpleNamespace(data=[])
 
-    monkeypatch.setattr(mal_client, "_fetch_user_anime_list", fake_fetch_list)
+    monkeypatch.setattr(mal_client, "_fetch_list_collection", fake_fetch_list)
 
     async def never_called(*args: Any, **kwargs: Any):
         raise AssertionError("_make_request should not be called for cached lookup")
@@ -263,7 +263,9 @@ async def test_update_and_delete_anime_status_auth_and_payload(
         comments="done",
     )
     assert status.score == 9
-    assert 42 not in mal_client._list_cache
+    assert 42 in mal_client._list_cache
+    assert mal_client._list_cache[42].my_list_status is not None
+    assert mal_client._list_cache[42].my_list_status.score == 9
     assert mal_client._media_cache == {}
     assert captured[0]["method"] == "PATCH"
     assert captured[0]["data"]["status"] == "completed"

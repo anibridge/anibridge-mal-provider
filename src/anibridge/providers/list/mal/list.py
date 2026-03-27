@@ -386,7 +386,7 @@ class MalListProvider(ListProvider):
 
     async def clear_cache(self) -> None:
         """Clear cached user/list data."""
-        await self._client.clear_cache()
+        self._client.clear_cache()
         self.log.debug("Cleared MAL provider cache")
 
     async def close(self) -> None:
