@@ -95,21 +95,21 @@ async def test_initialize_sets_user_timezone_and_primes_cache(
         calls.append(f"user:{username}")
         return SimpleNamespace(id=1, name="Tester", time_zone="UTC")
 
-    async def fake_get_list(**kwargs: Any):
+    async def fake_fetch_list(**kwargs: Any):
         calls.append("list")
         return SimpleNamespace(data=[])
 
-    mal_client.offline_anime_entries = {99: Anime(id=99, title="Old")}
+    mal_client._list_cache = {99: Anime(id=99, title="Old")}
     monkeypatch.setattr(mal_client, "refresh_access_token", fake_refresh)
     monkeypatch.setattr(mal_client, "get_user", fake_get_user)
-    monkeypatch.setattr(mal_client, "get_user_anime_list", fake_get_list)
+    monkeypatch.setattr(mal_client, "_fetch_list_collection", fake_fetch_list)
 
     await mal_client.initialize()
 
     assert calls == ["refresh", "user:@me", "list"]
     assert mal_client.user is not None and mal_client.user.name == "Tester"
     assert mal_client.user_timezone is not None
-    assert mal_client.offline_anime_entries == {}
+    assert mal_client._list_cache == {}
 
 
 @pytest.mark.asyncio
@@ -143,7 +143,8 @@ async def test_search_anime_clamps_limit_and_caches(
     assert [anime.id for anime in results] == [1, 2]
     assert captured_params["limit"] == 100
     assert captured_params["nsfw"] == "false"
-    assert set(mal_client.offline_anime_entries) == {1, 2}
+    assert set(mal_client._media_cache) == {1, 2}
+    assert set(mal_client._list_cache) == {1}
 
 
 @pytest.mark.asyncio
@@ -152,7 +153,12 @@ async def test_get_anime_cache_and_force_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """get_anime should serve cache unless force_refresh is requested."""
-    mal_client.offline_anime_entries[7] = Anime(id=7, title="Cached")
+    mal_client._media_cache[7] = Anime(id=7, title="Cached")
+
+    async def fake_fetch_list(**kwargs: Any):
+        return SimpleNamespace(data=[])
+
+    monkeypatch.setattr(mal_client, "_fetch_list_collection", fake_fetch_list)
 
     async def never_called(*args: Any, **kwargs: Any):
         raise AssertionError("_make_request should not be called for cached lookup")
@@ -171,7 +177,7 @@ async def test_get_anime_cache_and_force_refresh(
     monkeypatch.setattr(mal_client, "_make_request", fake_make_request)
     fresh = await mal_client.get_anime(7, force_refresh=True)
     assert fresh.title == "Fresh"
-    assert mal_client.offline_anime_entries[7].title == "Fresh"
+    assert mal_client._media_cache[7].title == "Fresh"
 
 
 @pytest.mark.asyncio
@@ -206,7 +212,8 @@ async def test_get_user_anime_list_caches_entries(
 
     assert len(paging.data) == 1
     assert paging.data[0].node.id == 11
-    assert 11 in mal_client.offline_anime_entries
+    assert 11 in mal_client._media_cache
+    assert 11 in mal_client._list_cache
 
 
 @pytest.mark.asyncio
@@ -221,7 +228,8 @@ async def test_update_and_delete_anime_status_auth_and_payload(
         await mal_client.delete_anime_status(42)
 
     mal_client.access_token = "access"
-    mal_client.offline_anime_entries[42] = Anime(id=42, title="Before")
+    mal_client._list_cache[42] = Anime(id=42, title="Before")
+    mal_client._media_cache[42] = Anime(id=42, title="Before")
 
     captured: list[dict[str, Any]] = []
 
@@ -255,7 +263,10 @@ async def test_update_and_delete_anime_status_auth_and_payload(
         comments="done",
     )
     assert status.score == 9
-    assert 42 not in mal_client.offline_anime_entries
+    assert 42 in mal_client._list_cache
+    assert mal_client._list_cache[42].my_list_status is not None
+    assert mal_client._list_cache[42].my_list_status.score == 9
+    assert mal_client._media_cache == {}
     assert captured[0]["method"] == "PATCH"
     assert captured[0]["data"]["status"] == "completed"
     assert captured[0]["data"]["num_watched_episodes"] == "12"
@@ -395,7 +406,7 @@ async def test_close_closes_active_session(mal_client: MalClient) -> None:
             self.closed = True
 
     session = _Closable()
-    mal_client._session = session  # type: ignore[assignment]
+    mal_client._session = session  # ty:ignore[invalid-assignment]
 
     await mal_client.close()
     assert session.closed is True
