@@ -3,9 +3,11 @@
 from collections.abc import AsyncGenerator
 from datetime import UTC, date
 from logging import getLogger
+from typing import cast
 
 import pytest
 import pytest_asyncio
+from anibridge.utils.types import ProviderLogger
 
 from anibridge.providers.list.mal.list import MalListProvider
 from anibridge.providers.list.mal.models import (
@@ -137,7 +139,7 @@ async def mal_provider(
     """Yield a MAL list provider wired to the fake client."""
     provider = MalListProvider(
         config={"client_id": "id", "token": "refresh"},
-        logger=getLogger("anibridge.providers.list.mal"),
+        logger=cast(ProviderLogger, getLogger("anibridge.providers.list.mal")),
     )
     provider._client = fake_client
     await provider.initialize()

@@ -73,6 +73,7 @@ class MalListMedia(ListMedia["MalListProvider"]):
     """AniBridge media wrapper for MAL anime resources."""
 
     def __init__(self, provider: MalListProvider, anime: Anime) -> None:
+        """Initialize the MAL media wrapper with the provider and anime resource."""
         self._provider = provider
         self._anime = anime
         self._key = str(anime.id)

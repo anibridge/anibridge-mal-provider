@@ -43,7 +43,7 @@ def test_status_mapping_helpers() -> None:
     assert _list_status_to_mal(None) == (None, False)
 
 
-def test_media_metadata_helpers() -> None:
+def test_media_metadata_helpers(mal_provider) -> None:
     """MalListMedia should expose normalized labels, urls, and media attributes."""
     anime = Anime(
         id=501,
@@ -54,7 +54,7 @@ def test_media_metadata_helpers() -> None:
         main_picture=Picture(large=None, medium="https://img.medium"),
         num_episodes=None,
     )
-    media = MalListMedia(provider=None, anime=anime)  # type: ignore[arg-type]
+    media = MalListMedia(provider=mal_provider, anime=anime)  # type: ignore[arg-type]
 
     assert media.external_url == "https://myanimelist.net/anime/501"
     assert media.labels == ["Spring 2024", "Movie", "Finished Airing"]
