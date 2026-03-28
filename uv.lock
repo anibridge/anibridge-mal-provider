@@ -125,16 +125,16 @@ dev = [
 
 [[package]]
 name = "anibridge-utils"
-version = "0.2.0b4"
+version = "0.2.0b5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cachetools" },
     { name = "diskcache" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/00/38/34eb5de857cfcc04eb318f1937d2681444cacb4034aca9050bd7ccdb2f1a/anibridge_utils-0.2.0b4.tar.gz", hash = "sha256:fe95cf6e0af15697444db864fd531f7d3830139c41090d580b47c43ae991f646", size = 12804, upload-time = "2026-03-27T05:39:46.576Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7d/ae/afa145495207f96d48d527bfc0f0cb742ef8b46a54f69c10adf2b6fb83a7/anibridge_utils-0.2.0b5.tar.gz", hash = "sha256:712d28997166896afb542c40906436a65f74635c7025fdb6d078906577267e65", size = 14421, upload-time = "2026-03-28T07:36:06.582Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/c8/8ec0ee3e2846847ff964e5417d665fa6645c2ea7bd6067b6611c0b09f679/anibridge_utils-0.2.0b4-py3-none-any.whl", hash = "sha256:3b19c9f9db69630376d0e4d68b3de70ed5f43656d05845ed04a23b60657557c6", size = 15521, upload-time = "2026-03-27T05:39:45.457Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/33/160e77ccd3040d7d962709a371319c00bc6e559ece6052819e36a54ac702/anibridge_utils-0.2.0b5-py3-none-any.whl", hash = "sha256:5c081b873b34eae6a2ba74e618581434d80622d830a6bec378f7fcc06b24fd1c", size = 17197, upload-time = "2026-03-28T07:36:07.543Z" },
 ]
 
 [[package]]
