@@ -1,14 +1,16 @@
 """Pytest fixtures shared across the provider test-suite."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 from datetime import UTC, date
 from logging import getLogger
 from typing import cast
 
 import pytest
 import pytest_asyncio
+from anibridge.utils.limiter import Limiter
 from anibridge.utils.types import ProviderLogger
 
+from anibridge.providers.list.mal.client import MalClient
 from anibridge.providers.list.mal.list import MalListProvider
 from anibridge.providers.list.mal.models import (
     Anime,
@@ -145,3 +147,18 @@ async def mal_provider(
     await provider.initialize()
     yield provider
     await provider.close()
+
+
+@pytest.fixture(autouse=True)
+def disable_rate_limiter(monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
+    """Disable limiter behavior and unwrap decorated methods for fast tests."""
+    previous = Limiter.DISABLED
+    Limiter.DISABLED = True
+    wrapped = getattr(MalClient._make_request, "__wrapped__", None)
+    if wrapped is not None:
+        monkeypatch.setattr(MalClient, "_make_request", wrapped)
+    search_wrapped = getattr(MalClient._search_anime, "__wrapped__", None)
+    if search_wrapped is not None:
+        monkeypatch.setattr(MalClient, "_search_anime", search_wrapped)
+    yield
+    Limiter.DISABLED = previous

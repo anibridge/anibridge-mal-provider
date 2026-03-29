@@ -261,6 +261,7 @@ class MalListProvider(ListProvider):
             logger=self.log,
             client_id=self.parsed_config.client_id,
             refresh_token=self.parsed_config.token,
+            rate_limit=self.parsed_config.rate_limit,
         )
         self._user: ListUser | None = None
 

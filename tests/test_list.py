@@ -1,14 +1,18 @@
 """Tests for the MAL list provider implementation."""
 
 import json
+import logging
 from datetime import UTC, date, datetime
+from typing import cast
 
 import pytest
 from anibridge.list import ListStatus
+from anibridge.utils.types import ProviderLogger
 
 from anibridge.providers.list.mal.list import (
     MalListEntry,
     MalListMedia,
+    MalListProvider,
     _list_status_to_mal,
     _mal_status_to_list,
 )
@@ -60,6 +64,28 @@ def test_media_metadata_helpers(mal_provider) -> None:
     assert media.labels == ["Spring 2024", "Movie", "Finished Airing"]
     assert media.total_units == 1
     assert media.poster_image == "https://img.medium"
+
+
+def test_provider_default_rate_limit_uses_global_limiter() -> None:
+    """When rate_limit is omitted, provider should keep it as None."""
+    provider = MalListProvider(
+        logger=cast(ProviderLogger, logging.getLogger("tests.list")),
+        config={"token": "abc"},
+    )
+
+    assert provider.parsed_config.rate_limit is None
+    assert provider._client.rate_limit is None
+
+
+def test_provider_passes_custom_rate_limit_to_client() -> None:
+    """Configured rate_limit should be forwarded to the MAL client."""
+    provider = MalListProvider(
+        logger=cast(ProviderLogger, logging.getLogger("tests.list")),
+        config={"token": "abc", "rate_limit": 90},
+    )
+
+    assert provider.parsed_config.rate_limit == 90
+    assert provider._client.rate_limit == 90
 
 
 @pytest.mark.asyncio

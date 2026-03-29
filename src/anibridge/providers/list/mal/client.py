@@ -5,7 +5,7 @@ import contextlib
 import importlib.metadata
 from collections.abc import Sequence
 from datetime import UTC, date, tzinfo
-from typing import Any
+from typing import Any, ClassVar
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -25,14 +25,13 @@ __all__ = ["MalClient"]
 
 TOKEN_URL = "https://myanimelist.net/v1/oauth2/token"
 
-# MAL's rate limit is unknown, but 1 request per second is a safe default
-mal_limiter = Limiter(rate=1, capacity=1)
+global_mal_limiter = Limiter(rate=60 / 60, capacity=1)
 
 
 class MalClient:
     """Client for the MAL REST API."""
 
-    API_URL = "https://api.myanimelist.net/v2"
+    API_URL: ClassVar[str] = "https://api.myanimelist.net/v2"
 
     DEFAULT_ANIME_FIELDS = (
         "id",
@@ -67,6 +66,7 @@ class MalClient:
         logger: ProviderLogger,
         client_id: str,
         refresh_token: str | None = None,
+        rate_limit: int | None = None,
     ) -> None:
         """Construct the client with the required credentials."""
         self.log = logger
@@ -74,6 +74,20 @@ class MalClient:
         self.access_token: str | None = None
         self._session: aiohttp.ClientSession | None = None
         self.refresh_token = refresh_token
+        self.rate_limit = rate_limit
+
+        if self.rate_limit is None:
+            self.log.debug(
+                "Using shared global MAL rate limiter with %s requests per minute",
+                global_mal_limiter.rate * 60,
+            )
+            self._request_limiter = global_mal_limiter
+        else:
+            self.log.debug(
+                "Using local MAL rate limiter with %s requests per minute",
+                self.rate_limit,
+            )
+            self._request_limiter = Limiter(rate=self.rate_limit / 60, capacity=1)
 
         self.user: User | None = None
         self.user_timezone: tzinfo = UTC
@@ -463,7 +477,6 @@ class MalClient:
             await self._session.close()
         self._session = None
 
-    @mal_limiter
     async def _make_request(
         self,
         method: str,
@@ -482,6 +495,8 @@ class MalClient:
         """
         if retry_count >= 3:
             raise aiohttp.ClientError("Failed to make request after 3 tries")
+
+        await self._request_limiter.acquire()  # ty:ignore[invalid-await]
 
         session = await self._get_session()
         url = f"{self.API_URL.rstrip('/')}/{path.lstrip('/')}"

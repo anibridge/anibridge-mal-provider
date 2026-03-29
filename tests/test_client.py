@@ -80,6 +80,44 @@ def mal_client() -> MalClient:
     )
 
 
+def test_default_rate_limiter_is_shared_across_clients() -> None:
+    """Clients without a custom limit should reuse one global limiter."""
+    first = MalClient(
+        logger=cast(ProviderLogger, getLogger("tests.mal.client")),
+        client_id="client-id",
+        refresh_token="refresh-token",
+    )
+    second = MalClient(
+        logger=cast(ProviderLogger, getLogger("tests.mal.client")),
+        client_id="client-id",
+        refresh_token="refresh-token",
+    )
+
+    assert first.rate_limit is None
+    assert second.rate_limit is None
+    assert first._request_limiter is second._request_limiter
+
+
+def test_custom_rate_limiter_is_local_per_client() -> None:
+    """Custom limits should create per-client limiters and convert to req/sec."""
+    first = MalClient(
+        logger=cast(ProviderLogger, getLogger("tests.mal.client")),
+        client_id="client-id",
+        refresh_token="refresh-token",
+        rate_limit=120,
+    )
+    second = MalClient(
+        logger=cast(ProviderLogger, getLogger("tests.mal.client")),
+        client_id="client-id",
+        refresh_token="refresh-token",
+        rate_limit=120,
+    )
+
+    assert first._request_limiter is not second._request_limiter
+    assert first._request_limiter.rate == pytest.approx(2.0)
+    assert second._request_limiter.rate == pytest.approx(2.0)
+
+
 @pytest.mark.asyncio
 async def test_initialize_sets_user_timezone_and_primes_cache(
     mal_client: MalClient,
