@@ -463,12 +463,30 @@ class MalClient:
             "User-Agent": "anibridge-mal-provider/"
             + importlib.metadata.version("anibridge-mal-provider"),
         }
-        async with (
-            aiohttp.ClientSession(headers=headers) as session,
-            session.post(TOKEN_URL, data=payload) as response,
-        ):
-            response.raise_for_status()
-            data = await response.json()
+        try:
+            async with (
+                aiohttp.ClientSession(headers=headers) as session,
+                session.post(TOKEN_URL, data=payload) as response,
+            ):
+                if response.status == 401:
+                    raise aiohttp.ClientError(
+                        "MAL API request unauthorized (401). "
+                        "Verify your MAL client ID and refresh token."
+                    )
+
+                response.raise_for_status()
+                data = await response.json()
+        except aiohttp.ClientResponseError as exc:
+            raise aiohttp.ClientError(
+                "MAL token refresh failed. "
+                f"status={exc.status}; "
+                f"error={exc.message or str(exc)}"
+            ) from exc
+        except (aiohttp.ClientConnectionError, TimeoutError) as exc:
+            raise aiohttp.ClientError(
+                "MAL token refresh failed due to connection error. "
+                f"error={exc.__class__.__name__}: {exc}"
+            ) from exc
 
         self.access_token = data["access_token"]
         self.refresh_token = data.get("refresh_token", self.refresh_token)
@@ -488,82 +506,82 @@ class MalClient:
         retry_count: int = 0,
         refresh_attempted: bool = False,
     ) -> dict[str, Any]:
-        """Makes a rate-limited request to the MAL API.
-
-        Handles rate limiting, authentication refresh, and automatic retries
-        for transient errors.
-        """
-        if retry_count >= 3:
+        """Make a rate-limited MAL API request with bounded retries."""
+        max_attempts = 3
+        if retry_count >= max_attempts:
             raise aiohttp.ClientError("Failed to make request after 3 tries")
-
-        await self._request_limiter.acquire()  # ty:ignore[invalid-await]
 
         session = await self._get_session()
         url = f"{self.API_URL.rstrip('/')}/{path.lstrip('/')}"
+        normalized_path = f"/{path.lstrip('/')}"
 
-        try:
-            async with session.request(
-                method,
-                url,
-                params=params,
-                json=json,
-                data=data,
-            ) as response:
-                if (
-                    response.status == 401
-                    and not refresh_attempted
-                    and self.refresh_token
-                ):
-                    await self.refresh_access_token()
-                    return await self._make_request(
-                        method,
-                        path,
-                        params=params,
-                        json=json,
-                        data=data,
-                        retry_count=retry_count,
-                        refresh_attempted=True,
-                    )
+        for attempt in range(retry_count + 1, max_attempts + 1):
+            try:
+                await self._request_limiter.acquire()  # ty:ignore[invalid-await]
 
-                if response.status in (429, 502):
-                    retry_after = int(response.headers.get("Retry-After", "1"))
-                    await asyncio.sleep(max(retry_after, 1))
-                    return await self._make_request(
-                        method,
-                        path,
-                        params=params,
-                        json=json,
-                        data=data,
-                        retry_count=retry_count + 1,
-                    )
+                async with session.request(
+                    method,
+                    url,
+                    params=params,
+                    json=json,
+                    data=data,
+                ) as response:
+                    if response.status == 401:
+                        if not refresh_attempted and self.refresh_token:
+                            await self.refresh_access_token()
+                            session = await self._get_session()
+                            refresh_attempted = True
+                            continue
 
-                try:
+                        raise aiohttp.ClientError(
+                            "MAL API request unauthorized (401). "
+                            "Verify your MAL credentials."
+                        )
+
+                    if response.status == 429:
+                        retry_after = response.headers.get("Retry-After", "unknown")
+                        raise aiohttp.ClientError(
+                            f"MAL API rate limited (429). Retry-After: {retry_after}"
+                        )
+
                     response.raise_for_status()
-                except aiohttp.ClientResponseError:
-                    self.log.exception(
-                        "Failed MAL request %s %s (%s): %s",
-                        method,
-                        url,
-                        response.status,
-                        await response.text(),
+
+                    if response.status == 204:
+                        return {}
+
+                    return await response.json()
+
+            except (
+                aiohttp.ClientResponseError,
+                aiohttp.ClientConnectionError,
+                TimeoutError,
+            ) as exc:
+                if attempt < max_attempts:
+                    self.log.error(
+                        "Retrying failed request (attempt %s/%s): %s",
+                        attempt,
+                        max_attempts,
+                        exc,
                     )
-                    raise
+                    await asyncio.sleep(1)
+                    continue
 
-                if response.status == 204:
-                    return {}
-                return await response.json()
+                error_message = (
+                    exc.message
+                    if isinstance(exc, aiohttp.ClientResponseError)
+                    else str(exc)
+                )
 
-        except TimeoutError, aiohttp.ClientError:
-            self.log.exception("Connection error while making request to MAL API")
-            await asyncio.sleep(1)
-            return await self._make_request(
-                method,
-                path,
-                params=params,
-                json=json,
-                data=data,
-                retry_count=retry_count + 1,
-            )
+                raise aiohttp.ClientError(
+                    "MAL request failed after 3 attempts. "
+                    f"error={exc.__class__.__name__}: {error_message}; "
+                    f"method={method}; "
+                    f"path={normalized_path}; "
+                    f"params={params}; "
+                    f"json={json}"
+                ) from exc
+
+        raise aiohttp.ClientError("MAL request failed unexpectedly")
 
     @staticmethod
     def parse_date(value: Any) -> date | None:

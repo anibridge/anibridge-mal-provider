@@ -42,7 +42,7 @@ class _StubResponse:
         return self._text
 
     def raise_for_status(self) -> None:
-        if self.status >= 400 and self.status not in (401, 429, 502):
+        if self.status >= 400 and self.status not in (401, 429):
             raise aiohttp.ClientResponseError(
                 request_info=cast(Any, SimpleNamespace(real_url="https://mal.example")),
                 history=(),
@@ -314,19 +314,68 @@ async def test_update_and_delete_anime_status_auth_and_payload(
 
 
 @pytest.mark.asyncio
-async def test_make_request_handles_204_and_retry(mal_client: MalClient) -> None:
-    """_make_request should retry on 429 and return empty dict for 204."""
-    session = _StubSession(
-        responses=[
-            _StubResponse(status=429, headers={"Retry-After": "0"}),
-            _StubResponse(status=204),
-        ]
-    )
+async def test_make_request_handles_204(mal_client: MalClient) -> None:
+    """_make_request should return an empty dict for 204 responses."""
+    session = _StubSession(responses=[_StubResponse(status=204)])
     mal_client._session = cast(aiohttp.ClientSession, session)
 
     result = await mal_client._make_request("GET", "/anime/1")
 
     assert result == {}
+    assert len(session.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_make_request_fails_fast_on_rate_limit(
+    mal_client: MalClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """429 responses should fail immediately without retries."""
+    session = _StubSession(
+        responses=[
+            _StubResponse(status=429, headers={"Retry-After": "0"}),
+            _StubResponse(status=200, payload={"ok": True}),
+        ]
+    )
+    mal_client._session = cast(aiohttp.ClientSession, session)
+
+    sleep_calls = 0
+
+    async def fake_sleep(_seconds: float) -> None:
+        nonlocal sleep_calls
+        sleep_calls += 1
+
+    monkeypatch.setattr("anibridge.providers.list.mal.client.asyncio.sleep", fake_sleep)
+
+    with pytest.raises(aiohttp.ClientError, match="rate limited"):
+        await mal_client._make_request("GET", "/anime/1")
+
+    assert sleep_calls == 0
+    assert len(session.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_make_request_retries_bad_gateway(
+    mal_client: MalClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """502 responses should be retried using the same session."""
+    session = _StubSession(
+        responses=[
+            _StubResponse(status=502),
+            _StubResponse(status=200, payload={"ok": True}),
+        ]
+    )
+    mal_client._session = cast(aiohttp.ClientSession, session)
+
+    async def fast_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("anibridge.providers.list.mal.client.asyncio.sleep", fast_sleep)
+
+    result = await mal_client._make_request("GET", "/anime/1")
+
+    assert result == {"ok": True}
     assert len(session.calls) == 2
 
 
@@ -358,14 +407,46 @@ async def test_make_request_refreshes_on_unauthorized(
 
 
 @pytest.mark.asyncio
+async def test_make_request_fails_fast_on_unauthorized_without_refresh(
+    mal_client: MalClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """401 responses should fail immediately when refresh is unavailable."""
+    session = _StubSession(
+        responses=[
+            _StubResponse(status=401),
+            _StubResponse(status=200, payload={"ok": True}),
+        ]
+    )
+    mal_client._session = cast(aiohttp.ClientSession, session)
+    mal_client.refresh_token = None
+
+    sleep_calls = 0
+
+    async def fake_sleep(_seconds: float) -> None:
+        nonlocal sleep_calls
+        sleep_calls += 1
+
+    monkeypatch.setattr("anibridge.providers.list.mal.client.asyncio.sleep", fake_sleep)
+
+    with pytest.raises(aiohttp.ClientError, match="unauthorized"):
+        await mal_client._make_request("GET", "/anime/1")
+
+    assert sleep_calls == 0
+    assert len(session.calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_make_request_raises_after_three_retries(
     mal_client: MalClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """_make_request should stop retrying after the configured retry limit."""
+    """_make_request should stop retrying after three failed attempts."""
     mal_client._session = cast(
         aiohttp.ClientSession,
-        _StubSession(responses=[TimeoutError("timeout")]),
+        _StubSession(
+            responses=[cast(object, aiohttp.ClientConnectionError("boom"))] * 4
+        ),
     )
 
     async def fast_sleep(_seconds: float) -> None:
@@ -374,7 +455,33 @@ async def test_make_request_raises_after_three_retries(
     monkeypatch.setattr("anibridge.providers.list.mal.client.asyncio.sleep", fast_sleep)
 
     with pytest.raises(aiohttp.ClientError):
-        await mal_client._make_request("GET", "/anime/1", retry_count=3)
+        await mal_client._make_request("GET", "/anime/1")
+
+
+@pytest.mark.asyncio
+async def test_make_request_recovers_from_connection_error(
+    mal_client: MalClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Transient connection errors should be retried up to the limit."""
+    mal_client._session = cast(
+        aiohttp.ClientSession,
+        _StubSession(
+            responses=[
+                aiohttp.ClientConnectionError("boom"),
+                _StubResponse(status=200, payload={"ok": True}),
+            ]
+        ),
+    )
+
+    async def fast_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("anibridge.providers.list.mal.client.asyncio.sleep", fast_sleep)
+
+    result = await mal_client._make_request("GET", "/anime/1")
+
+    assert result == {"ok": True}
 
 
 @pytest.mark.asyncio
@@ -418,6 +525,65 @@ async def test_refresh_access_token_updates_state(
 
     assert client.access_token == "new-access"
     assert client.refresh_token == "new-refresh"
+
+
+@pytest.mark.asyncio
+async def test_refresh_access_token_fails_fast_on_unauthorized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """refresh_access_token should raise a clear error on 401 responses."""
+    client = MalClient(
+        logger=cast(ProviderLogger, getLogger("tests.mal.client.refresh")),
+        client_id="client-id",
+        refresh_token="invalid-refresh",
+    )
+
+    class _UnauthorizedResponse:
+        status = 401
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def json(self) -> dict[str, Any]:
+            return {}
+
+        def raise_for_status(self) -> None:
+            raise aiohttp.ClientResponseError(
+                request_info=cast(Any, SimpleNamespace(real_url=TOKEN_URL)),
+                history=(),
+                status=401,
+                message="Unauthorized",
+            )
+
+    class _UnauthorizedSession:
+        def __init__(self, **kwargs: Any) -> None:
+            self.kwargs = kwargs
+            self.closed = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, url: str, data: dict[str, str]):
+            assert url == TOKEN_URL
+            assert data["grant_type"] == "refresh_token"
+            return _UnauthorizedResponse()
+
+        async def close(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr(
+        "anibridge.providers.list.mal.client.aiohttp.ClientSession",
+        _UnauthorizedSession,
+    )
+
+    with pytest.raises(aiohttp.ClientError, match="unauthorized"):
+        await client.refresh_access_token()
 
 
 def test_parse_date_variants() -> None:
