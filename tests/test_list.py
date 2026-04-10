@@ -133,7 +133,7 @@ async def test_entry_validations_and_conversion(mal_provider, fake_client) -> No
 
 @pytest.mark.asyncio
 async def test_backup_and_restore_round_trip(mal_provider, fake_client) -> None:
-    """Backup produces JSON and restore replays updates through the client stub."""
+    """Backup produces JSON and restore replays updates and removes stale entries."""
     anime_one = Anime(
         id=1,
         title="Alpha",
@@ -173,6 +173,18 @@ async def test_backup_and_restore_round_trip(mal_provider, fake_client) -> None:
     assert any(item["status"] == MalListStatus.WATCHING for item in payload)
 
     fake_client.update_calls.clear()
+    anime_three = Anime(
+        id=3,
+        title="Gamma",
+        num_episodes=13,
+        media_type="tv",
+        my_list_status=MyAnimeListStatus(
+            status=MalListStatus.DROPPED,
+            num_episodes_watched=4,
+        ),
+    )
+    fake_client.offline_anime_entries[anime_three.id] = anime_three
+
     await mal_provider.restore_list(backup)
 
     assert len(fake_client.update_calls) == 2
@@ -181,3 +193,5 @@ async def test_backup_and_restore_round_trip(mal_provider, fake_client) -> None:
     assert first_call["status"] in {MalListStatus.WATCHING, MalListStatus.COMPLETED}
     assert isinstance(first_call["start_date"], (date, type(None)))
     assert "comments" in first_call
+    assert fake_client.deleted_ids == [3]
+    assert set(fake_client.offline_anime_entries) == {1, 2}

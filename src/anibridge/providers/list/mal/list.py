@@ -340,6 +340,17 @@ class MalListProvider(ListProvider):
         except JSONDecodeError:
             self.log.exception("Failed to decode MAL backup JSON")
             raise
+
+        restore_ids = {int(item["id"]) for item in data}
+        existing_ids: set[int] = set()
+        offset = 0
+        while True:
+            page = await self._client.get_user_anime_list(offset=offset, limit=1000)
+            existing_ids.update(item.node.id for item in page.data)
+            if page.paging is None or page.paging.next is None:
+                break
+            offset += 1000
+
         self.log.debug("Restoring MAL backup containing %s entries", len(data))
         for item in data:
             anime_id = int(item.pop("id"))
@@ -358,6 +369,8 @@ class MalListProvider(ListProvider):
                 tags=status.tags,
                 comments=status.comments,
             )
+        for anime_id in existing_ids - restore_ids:
+            await self._client.delete_anime_status(anime_id)
         self.log.debug("Finished restoring MAL backup entries")
 
     async def search(self, query: str) -> Sequence[MalListEntry]:
