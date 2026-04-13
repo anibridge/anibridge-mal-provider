@@ -92,7 +92,7 @@ class MalClient:
         self.user: User | None = None
         self.user_timezone: tzinfo = UTC
 
-        self._bg_task: asyncio.Task[AnimePaging] | None = None
+        self._bg_task: asyncio.Task[None] | None = None
         self._cache_epoch = 0
         self._list_cache: dict[int, Anime] = {}
         self._media_cache: TTLDict[int, Anime] = TTLDict(ttl=43200)
@@ -174,7 +174,7 @@ class MalClient:
         if (task := self._bg_task) and not task.done():
             return
 
-        def _on_done(t: asyncio.Task[AnimePaging]) -> None:
+        def _on_done(t: asyncio.Task[None]) -> None:
             if not t.cancelled() and (exc := t.exception()):
                 self.log.warning("User-list cache refresh failed", exc_info=exc)
 
@@ -302,7 +302,7 @@ class MalClient:
         return page
 
     @ttl_cache(ttl=3600)
-    async def _fetch_list_collection(self) -> AnimePaging:
+    async def _fetch_list_collection(self) -> None:
         """Fetch all user list pages and atomically refresh list cache."""
         if not self.user:
             raise aiohttp.ClientError("User information is required for list refresh")
@@ -311,15 +311,15 @@ class MalClient:
 
         refresh_epoch = self._cache_epoch
         refreshed_list_cache: dict[int, Anime] = {}
+        total_count = 0
 
-        data = AnimePaging(data=[], paging=None)
         offset = 0
         while True:
             page = await self._get_user_anime_list_page(offset=offset, limit=1000)
             if refresh_epoch != self._cache_epoch:
-                return data
+                return
 
-            data.data.extend(page.data)
+            total_count += len(page.data)
             for item in page.data:
                 anime = item.node
                 if item.list_status is not None:
@@ -333,15 +333,16 @@ class MalClient:
             offset += 1000
 
         if refresh_epoch != self._cache_epoch:
-            return data
+            return
 
         self._list_cache.clear()
         self._list_cache.update(refreshed_list_cache)
+        del refreshed_list_cache
 
         with contextlib.suppress(AttributeError):
             self._search_anime.cache_clear()
 
-        return data
+        self.log.debug("Refreshed %s anime list entries", total_count)
 
     @ttl_cache(ttl=3600)
     async def _get_user_anime_list_page(
