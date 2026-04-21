@@ -143,7 +143,7 @@ async def mal_provider(
         config={"client_id": "id", "token": "refresh"},
         logger=cast(ProviderLogger, getLogger("anibridge.providers.list.mal")),
     )
-    provider._client = fake_client
+    provider._client = cast(MalClient, fake_client)
     await provider.initialize()
     yield provider
     await provider.close()
