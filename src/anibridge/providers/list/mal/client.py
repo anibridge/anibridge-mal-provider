@@ -207,7 +207,7 @@ class MalClient:
             fields=normalized_fields,
         )
 
-    @ttl_cache(ttl=300)
+    @ttl_cache(ttl=300, maxsize=128)
     async def _search_anime(
         self,
         query: str,
@@ -301,7 +301,7 @@ class MalClient:
             self._remember(anime)
         return page
 
-    @ttl_cache(ttl=3600)
+    @ttl_cache(ttl=3600, maxsize=1)
     async def _fetch_list_collection(self) -> None:
         """Fetch all user list pages and atomically refresh list cache."""
         if not self.user:
@@ -344,7 +344,7 @@ class MalClient:
 
         self.log.debug("Refreshed %s anime list entries", total_count)
 
-    @ttl_cache(ttl=3600)
+    @ttl_cache(ttl=3600, maxsize=1)
     async def _get_user_anime_list_page(
         self,
         *,
@@ -518,7 +518,7 @@ class MalClient:
 
         for attempt in range(retry_count + 1, max_attempts + 1):
             try:
-                await self._request_limiter.acquire()  # ty:ignore[invalid-await]
+                await self._request_limiter.acquire(asynchronous=True)
 
                 async with session.request(
                     method,
