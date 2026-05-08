@@ -10,6 +10,7 @@ from typing import Any, ClassVar
 from zoneinfo import ZoneInfo
 
 import aiohttp
+import msgspec
 from anibridge.utils.cache import TTLDict, ttl_cache
 from anibridge.utils.limiter import Limiter
 from anibridge.utils.types import ProviderLogger
@@ -175,7 +176,9 @@ class MalClient:
     def _remember(self, anime: Anime) -> None:
         """Store anime in shared caches."""
         # Keep the long-lived TTL cache free of user-specific list state.
-        self._media_cache[anime.id] = anime.model_copy(update={"my_list_status": None})
+        self._media_cache[anime.id] = msgspec.structs.replace(
+            anime, my_list_status=None
+        )
         if anime.my_list_status is None:
             self._list_cache.pop(anime.id, None)
         else:
@@ -230,7 +233,7 @@ class MalClient:
             f"/users/{username}",
             params={"fields": "time_zone"},
         )
-        return User(**response)
+        return msgspec.convert(response, type=User)
 
     async def search_anime(
         self,
@@ -271,7 +274,7 @@ class MalClient:
             ),
         }
         response = await self._make_request("GET", "/anime", params=params)
-        paging = AnimePaging(**response)
+        paging = msgspec.convert(response, type=AnimePaging)
         results: list[Anime] = []
         for item in paging.data:
             anime = item.node
@@ -310,7 +313,7 @@ class MalClient:
         }
         self.log.debug(f"Pulling MAL data from API $${{mal_id: {anime_id}}}$$")
         response = await self._make_request("GET", f"/anime/{anime_id}", params=params)
-        anime = Anime(**response)
+        anime = msgspec.convert(response, type=Anime)
         self._remember(anime)
         return anime
 
@@ -421,7 +424,7 @@ class MalClient:
             f"/users/{username}/animelist",
             params=params,
         )
-        return AnimePaging(**response)
+        return msgspec.convert(response, type=AnimePaging)
 
     async def update_anime_status(
         self,
@@ -475,7 +478,7 @@ class MalClient:
             data=payload,
         )
         status_payload = response.get("my_list_status", response)
-        list_status = MyAnimeListStatus(**status_payload)
+        list_status = msgspec.convert(status_payload, type=MyAnimeListStatus)
         if cached := self._cached(anime_id):
             cached.my_list_status = list_status
             self._list_cache[anime_id] = cached

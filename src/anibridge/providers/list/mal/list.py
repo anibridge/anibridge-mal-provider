@@ -6,6 +6,7 @@ from datetime import datetime
 from json import JSONDecodeError
 from typing import Any, cast
 
+import msgspec
 from anibridge.list import (
     ListEntry,
     ListMedia,
@@ -256,7 +257,7 @@ class MalListProvider(ListProvider):
     def __init__(self, *, logger: ProviderLogger, config: dict | None = None) -> None:
         """Create the MAL list provider with required credentials."""
         super().__init__(logger=logger, config=config)
-        self.parsed_config = MalListProviderConfig.model_validate(config or {})
+        self.parsed_config = msgspec.convert(config or {}, type=MalListProviderConfig)
         self._client = MalClient(
             logger=self.log,
             client_id=self.parsed_config.client_id,
@@ -292,7 +293,13 @@ class MalListProvider(ListProvider):
                 entries.append(
                     {
                         "id": item.node.id,
-                        **status.model_dump(mode="json", exclude_none=True),
+                        **{
+                            key: value
+                            for key, value in msgspec.json.decode(
+                                msgspec.json.encode(status)
+                            ).items()
+                            if value is not None
+                        },
                     }
                 )
             if page.paging is None or page.paging.next is None:
@@ -354,7 +361,7 @@ class MalListProvider(ListProvider):
         self.log.debug("Restoring MAL backup containing %s entries", len(data))
         for item in data:
             anime_id = int(item.pop("id"))
-            status = MyAnimeListStatus.model_validate(item)
+            status = msgspec.convert(item, type=MyAnimeListStatus)
             await self._client.update_anime_status(
                 anime_id=anime_id,
                 status=status.status,

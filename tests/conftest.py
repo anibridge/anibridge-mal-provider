@@ -105,8 +105,15 @@ class _FakeMalClient:
             "comments": comments,
         }
         self.update_calls.append(call)
+        normalized_status = (
+            None
+            if status is None
+            else status
+            if isinstance(status, MalListStatus)
+            else MalListStatus(status)
+        )
         status_model = MyAnimeListStatus(
-            status=status,
+            status=normalized_status,
             score=score,
             num_episodes_watched=progress,
             is_rewatching=is_rewatching,

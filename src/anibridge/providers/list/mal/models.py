@@ -5,13 +5,51 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+import msgspec
 
 
-class MalBaseModel(BaseModel):
+def _parse_date(value: Any) -> date | None | Any:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if not isinstance(value, str):
+        return value
+    with contextlib.suppress(ValueError):
+        return date.fromisoformat(str(value))
+
+    parts = value.split("-")
+    try:
+        year = int(parts[0])
+        month = int(parts[1]) if len(parts) > 1 else 1
+        day = int(parts[2]) if len(parts) > 2 else 1
+        return date(year, month, day)
+    except ValueError, IndexError:
+        return None
+
+
+def _parse_datetime(value: Any) -> datetime | None | Any:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value
+    with contextlib.suppress(ValueError):
+        return datetime.fromisoformat(str(value))
+    return value
+
+
+def _split_tags(value: Any) -> list[str] | Any:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [tag for tag in str(value).split(",") if tag]
+
+
+class MalBaseModel(msgspec.Struct, kw_only=True):
     """Base model for MAL responses."""
-
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
 
 class Picture(MalBaseModel):
@@ -24,7 +62,7 @@ class Picture(MalBaseModel):
 class AlternativeTitles(MalBaseModel):
     """Alternative titles for an anime."""
 
-    synonyms: list[str] = Field(default_factory=list)
+    synonyms: list[str] = msgspec.field(default_factory=list)
     en: str | None = None
     ja: str | None = None
 
@@ -63,61 +101,25 @@ class MalListStatus(StrEnum):
 class MyAnimeListStatus(MalBaseModel):
     """User-specific list status returned by MAL."""
 
-    status: MalListStatus | str | None = None
+    status: MalListStatus | None = None
     score: int | None = None
     num_episodes_watched: int | None = None
     is_rewatching: bool | None = None
-    start_date: date | None = None
-    finish_date: date | None = None
+    start_date: Any = None
+    finish_date: Any = None
     priority: int | None = None
     num_times_rewatched: int | None = None
     rewatch_value: int | None = None
-    tags: list[str] = Field(default_factory=list)
+    tags: Any = msgspec.field(default_factory=list)
     comments: str | None = None
-    updated_at: datetime | None = None
+    updated_at: Any = None
 
-    @field_validator("start_date", "finish_date", mode="before")
-    @classmethod
-    def _parse_date(cls, value: Any) -> date | None | Any:
-        if value in (None, ""):
-            return None
-        if isinstance(value, datetime):
-            return value.date()
-        if isinstance(value, date):
-            return value
-        if not isinstance(value, str):
-            return value
-        with contextlib.suppress(ValueError):
-            return date.fromisoformat(str(value))
-
-        parts = value.split("-")
-        try:
-            year = int(parts[0])
-            month = int(parts[1]) if len(parts) > 1 else 1
-            day = int(parts[2]) if len(parts) > 2 else 1
-            return date(year, month, day)
-        except ValueError, IndexError:
-            return None
-
-    @field_validator("updated_at", mode="before")
-    @classmethod
-    def _parse_datetime(cls, value: Any) -> datetime | Any:
-        if value in (None, ""):
-            return None
-        if isinstance(value, datetime):
-            return value
-        with contextlib.suppress(ValueError):
-            return datetime.fromisoformat(str(value))
-        return value
-
-    @field_validator("tags", mode="before")
-    @classmethod
-    def _split_tags(cls, value: Any) -> list[str] | Any:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return value
-        return [tag for tag in str(value).split(",") if tag]
+    def __post_init__(self) -> None:
+        """Normalize MAL status fields after decoding."""
+        self.start_date = _parse_date(self.start_date)
+        self.finish_date = _parse_date(self.finish_date)
+        self.updated_at = _parse_datetime(self.updated_at)
+        self.tags = _split_tags(self.tags)
 
 
 class Anime(MalBaseModel):
@@ -127,8 +129,8 @@ class Anime(MalBaseModel):
     title: str
     main_picture: Picture | None = None
     alternative_titles: AlternativeTitles | None = None
-    start_date: date | None = None
-    end_date: date | None = None
+    start_date: Any = None
+    end_date: Any = None
     synopsis: str | None = None
     mean: float | None = None
     rank: int | None = None
@@ -136,9 +138,9 @@ class Anime(MalBaseModel):
     num_list_users: int | None = None
     num_scoring_users: int | None = None
     nsfw: str | None = None
-    genres: list[Genre] = Field(default_factory=list)
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
+    genres: list[Genre] = msgspec.field(default_factory=list)
+    created_at: Any = None
+    updated_at: Any = None
     media_type: str | None = None
     status: str | None = None
     my_list_status: MyAnimeListStatus | None = None
@@ -149,39 +151,12 @@ class Anime(MalBaseModel):
     average_episode_duration: int | None = None
     rating: str | None = None
 
-    @field_validator("start_date", "end_date", mode="before")
-    @classmethod
-    def _parse_date(cls, value: Any) -> date | None | Any:
-        if value in (None, ""):
-            return None
-        if isinstance(value, datetime):
-            return value.date()
-        if isinstance(value, date):
-            return value
-        if not isinstance(value, str):
-            return value
-        with contextlib.suppress(ValueError):
-            return date.fromisoformat(str(value))
-
-        parts = value.split("-")
-        try:
-            year = int(parts[0])
-            month = int(parts[1]) if len(parts) > 1 else 1
-            day = int(parts[2]) if len(parts) > 2 else 1
-            return date(year, month, day)
-        except ValueError, IndexError:
-            return None
-
-    @field_validator("created_at", "updated_at", mode="before")
-    @classmethod
-    def _parse_datetime(cls, value: Any) -> datetime | Any:
-        if value in (None, ""):
-            return None
-        if isinstance(value, datetime):
-            return value
-        with contextlib.suppress(ValueError):
-            return datetime.fromisoformat(str(value))
-        return value
+    def __post_init__(self) -> None:
+        """Normalize MAL anime fields after decoding."""
+        self.start_date = _parse_date(self.start_date)
+        self.end_date = _parse_date(self.end_date)
+        self.created_at = _parse_datetime(self.created_at)
+        self.updated_at = _parse_datetime(self.updated_at)
 
 
 class AnimePagingData(MalBaseModel):
@@ -201,7 +176,7 @@ class Paging(MalBaseModel):
 class AnimePaging(MalBaseModel):
     """Paginated anime response from MAL."""
 
-    data: list[AnimePagingData] = Field(default_factory=list)
+    data: list[AnimePagingData] = msgspec.field(default_factory=list)
     paging: Paging | None = None
 
 
