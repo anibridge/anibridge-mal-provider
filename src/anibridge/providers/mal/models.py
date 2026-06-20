@@ -1,4 +1,4 @@
-"""Models for the MAL API."""
+"""MAL API models."""
 
 import contextlib
 from datetime import date, datetime

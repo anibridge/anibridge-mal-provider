@@ -5,8 +5,8 @@ from typing import Annotated
 import msgspec
 
 
-class MalListProviderConfig(msgspec.Struct, kw_only=True):
-    """Configuration for the MAL list provider."""
+class MalProviderConfig(msgspec.Struct, kw_only=True):
+    """Configuration for the MAL provider."""
 
     token: Annotated[
         str,

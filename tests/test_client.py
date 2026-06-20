@@ -7,10 +7,9 @@ from typing import Any, cast
 
 import aiohttp
 import pytest
-from anibridge.utils.types import ProviderLogger
 
-from anibridge.providers.list.mal.client import TOKEN_URL, MalClient
-from anibridge.providers.list.mal.models import Anime, MalListStatus
+from anibridge.providers.mal.client import TOKEN_URL, MalClient
+from anibridge.providers.mal.models import Anime, MalListStatus
 
 
 class _StubResponse:
@@ -74,7 +73,7 @@ class _StubSession:
 def mal_client() -> MalClient:
     """Create a test MAL client with deterministic logger."""
     return MalClient(
-        logger=cast(ProviderLogger, getLogger("tests.mal.client")),
+        logger=getLogger("tests.client"),
         client_id="test-client-id",
         refresh_token="refresh-token",
     )
@@ -83,12 +82,12 @@ def mal_client() -> MalClient:
 def test_default_rate_limiter_is_shared_across_clients() -> None:
     """Clients without a custom limit should reuse one global limiter."""
     first = MalClient(
-        logger=cast(ProviderLogger, getLogger("tests.mal.client")),
+        logger=getLogger("tests.client"),
         client_id="client-id",
         refresh_token="refresh-token",
     )
     second = MalClient(
-        logger=cast(ProviderLogger, getLogger("tests.mal.client")),
+        logger=getLogger("tests.client"),
         client_id="client-id",
         refresh_token="refresh-token",
     )
@@ -101,13 +100,13 @@ def test_default_rate_limiter_is_shared_across_clients() -> None:
 def test_custom_rate_limiter_is_local_per_client() -> None:
     """Custom limits should create per-client limiters and convert to req/sec."""
     first = MalClient(
-        logger=cast(ProviderLogger, getLogger("tests.mal.client")),
+        logger=getLogger("tests.client"),
         client_id="client-id",
         refresh_token="refresh-token",
         rate_limit=120,
     )
     second = MalClient(
-        logger=cast(ProviderLogger, getLogger("tests.mal.client")),
+        logger=getLogger("tests.client"),
         client_id="client-id",
         refresh_token="refresh-token",
         rate_limit=120,
@@ -345,7 +344,7 @@ async def test_make_request_fails_fast_on_rate_limit(
         nonlocal sleep_calls
         sleep_calls += 1
 
-    monkeypatch.setattr("anibridge.providers.list.mal.client.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr("anibridge.providers.mal.client.asyncio.sleep", fake_sleep)
 
     with pytest.raises(aiohttp.ClientError, match="rate limited"):
         await mal_client._make_request("GET", "/anime/1")
@@ -371,7 +370,7 @@ async def test_make_request_retries_bad_gateway(
     async def fast_sleep(_seconds: float) -> None:
         return None
 
-    monkeypatch.setattr("anibridge.providers.list.mal.client.asyncio.sleep", fast_sleep)
+    monkeypatch.setattr("anibridge.providers.mal.client.asyncio.sleep", fast_sleep)
 
     result = await mal_client._make_request("GET", "/anime/1")
 
@@ -427,7 +426,7 @@ async def test_make_request_fails_fast_on_unauthorized_without_refresh(
         nonlocal sleep_calls
         sleep_calls += 1
 
-    monkeypatch.setattr("anibridge.providers.list.mal.client.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr("anibridge.providers.mal.client.asyncio.sleep", fake_sleep)
 
     with pytest.raises(aiohttp.ClientError, match="unauthorized"):
         await mal_client._make_request("GET", "/anime/1")
@@ -452,7 +451,7 @@ async def test_make_request_raises_after_three_retries(
     async def fast_sleep(_seconds: float) -> None:
         return None
 
-    monkeypatch.setattr("anibridge.providers.list.mal.client.asyncio.sleep", fast_sleep)
+    monkeypatch.setattr("anibridge.providers.mal.client.asyncio.sleep", fast_sleep)
 
     with pytest.raises(aiohttp.ClientError):
         await mal_client._make_request("GET", "/anime/1")
@@ -477,7 +476,7 @@ async def test_make_request_recovers_from_connection_error(
     async def fast_sleep(_seconds: float) -> None:
         return None
 
-    monkeypatch.setattr("anibridge.providers.list.mal.client.asyncio.sleep", fast_sleep)
+    monkeypatch.setattr("anibridge.providers.mal.client.asyncio.sleep", fast_sleep)
 
     result = await mal_client._make_request("GET", "/anime/1")
 
@@ -490,7 +489,7 @@ async def test_refresh_access_token_updates_state(
 ) -> None:
     """refresh_access_token should store access token and rotate refresh token."""
     client = MalClient(
-        logger=cast(ProviderLogger, getLogger("tests.mal.client.refresh")),
+        logger=getLogger("tests.client"),
         client_id="client-id",
         refresh_token="old-refresh",
     )
@@ -518,7 +517,7 @@ async def test_refresh_access_token_updates_state(
             self.closed = True
 
     monkeypatch.setattr(
-        "anibridge.providers.list.mal.client.aiohttp.ClientSession", _TokenSession
+        "anibridge.providers.mal.client.aiohttp.ClientSession", _TokenSession
     )
 
     await client.refresh_access_token()
@@ -533,7 +532,7 @@ async def test_refresh_access_token_fails_fast_on_unauthorized(
 ) -> None:
     """refresh_access_token should raise a clear error on 401 responses."""
     client = MalClient(
-        logger=cast(ProviderLogger, getLogger("tests.mal.client.refresh")),
+        logger=getLogger("tests.client"),
         client_id="client-id",
         refresh_token="invalid-refresh",
     )
@@ -578,7 +577,7 @@ async def test_refresh_access_token_fails_fast_on_unauthorized(
             self.closed = True
 
     monkeypatch.setattr(
-        "anibridge.providers.list.mal.client.aiohttp.ClientSession",
+        "anibridge.providers.mal.client.aiohttp.ClientSession",
         _UnauthorizedSession,
     )
 

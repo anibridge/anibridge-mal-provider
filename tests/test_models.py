@@ -4,7 +4,7 @@ from datetime import date, datetime
 
 import msgspec
 
-from anibridge.providers.list.mal.models import Anime, MyAnimeListStatus
+from anibridge.providers.mal.models import Anime, MyAnimeListStatus
 
 
 def test_my_anime_list_status_parses_dates_and_tags() -> None:

@@ -7,7 +7,7 @@ _This provider comes built-in with AniBridge, so you don't need to install it se
 ## Configuration
 
 ```yaml
-list_provider_config:
+target_provider_config:
   mal:
     token: ...
     # client_id: "b11a4e1ead0db8142268906b4bb676a4"

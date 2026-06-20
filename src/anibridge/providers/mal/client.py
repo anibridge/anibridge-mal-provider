@@ -6,6 +6,7 @@ import importlib.metadata
 import time
 from collections.abc import Sequence
 from datetime import UTC, date, tzinfo
+from logging import Logger
 from typing import Any, ClassVar
 from zoneinfo import ZoneInfo
 
@@ -13,9 +14,8 @@ import aiohttp
 import msgspec
 from anibridge.utils.cache import TTLDict, ttl_cache
 from anibridge.utils.limiter import Limiter
-from anibridge.utils.types import ProviderLogger
 
-from anibridge.providers.list.mal.models import (
+from anibridge.providers.mal.models import (
     Anime,
     AnimePaging,
     MalListStatus,
@@ -26,6 +26,7 @@ from anibridge.providers.list.mal.models import (
 __all__ = ["MalClient"]
 
 TOKEN_URL = "https://myanimelist.net/v1/oauth2/token"
+_MAL_PACKAGE_NAME = "anibridge-mal-provider"
 
 global_mal_limiter = Limiter(rate=60 / 60, capacity=1)
 
@@ -67,7 +68,7 @@ class MalClient:
     def __init__(
         self,
         *,
-        logger: ProviderLogger,
+        logger: Logger,
         client_id: str,
         refresh_token: str | None = None,
         rate_limit: int | None = None,
@@ -106,15 +107,7 @@ class MalClient:
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create the aiohttp session."""
         if self._session is None or self._session.closed:
-            headers = {
-                "Accept": "application/json",
-                "User-Agent": "anibridge-mal-provider/"
-                + importlib.metadata.version("anibridge-mal-provider"),
-                "X-MAL-CLIENT-ID": self.client_id,
-            }
-            if self.access_token:
-                headers["Authorization"] = f"Bearer {self.access_token}"
-            self._session = aiohttp.ClientSession(headers=headers)
+            self._session = aiohttp.ClientSession(headers=self._session_headers())
         return self._session
 
     async def close(self) -> None:
@@ -137,13 +130,7 @@ class MalClient:
     def _invalidate_cached_views(
         self, *, clear_list_collection_cache: bool = True
     ) -> None:
-        """Invalidate derived cached views after list-state changes.
-
-        Args:
-            clear_list_collection_cache: Whether to clear the cached
-                `_fetch_list_collection` result. Mutations can skip this because
-                they already update the in-memory list cache directly.
-        """
+        """Invalidate derived cached views after list-state changes."""
         self._cache_epoch += 1
         if (task := self._bg_task) and not task.done():
             task.cancel()
@@ -153,6 +140,22 @@ class MalClient:
                 self._fetch_list_collection.cache_clear()
         with contextlib.suppress(AttributeError):
             self._search_anime.cache_clear()
+
+    def _session_headers(self) -> dict[str, str]:
+        """Return headers for MAL API requests."""
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": self._user_agent(),
+            "X-MAL-CLIENT-ID": self.client_id,
+        }
+        if self.access_token:
+            headers["Authorization"] = f"Bearer {self.access_token}"
+        return headers
+
+    @staticmethod
+    def _user_agent() -> str:
+        """Return the package-specific MAL user agent."""
+        return f"{_MAL_PACKAGE_NAME}/{importlib.metadata.version(_MAL_PACKAGE_NAME)}"
 
     async def initialize(self) -> None:
         """Prime the client by fetching user info and clearing caches."""
@@ -170,7 +173,7 @@ class MalClient:
         """Return anime from user-list cache or general TTL cache."""
         hit = self._list_cache.get(anime_id) or self._media_cache.get(anime_id)
         if hit:
-            self.log.debug(f"Cache hit $${{mal_id: {anime_id}}}$$")
+            self.log.debug("Cache hit $${mal_id: %s}$$", anime_id)
         return hit
 
     def _remember(self, anime: Anime) -> None:
@@ -311,7 +314,7 @@ class MalClient:
                 self.DEFAULT_ANIME_FIELDS_CSV if fields is None else ",".join(fields)
             )
         }
-        self.log.debug(f"Pulling MAL data from API $${{mal_id: {anime_id}}}$$")
+        self.log.debug("Pulling MAL data from API $${mal_id: %s}$$", anime_id)
         response = await self._make_request("GET", f"/anime/{anime_id}", params=params)
         anime = msgspec.convert(response, type=Anime)
         self._remember(anime)
@@ -446,36 +449,22 @@ class MalClient:
         if not self.access_token:
             raise aiohttp.ClientError("Access token is required to update list entries")
 
-        payload: dict[str, str] = {}
-        if status is not None:
-            payload["status"] = (
-                status.value if isinstance(status, MalListStatus) else str(status)
-            )
-        if score is not None:
-            payload["score"] = str(score)
-        if progress is not None:
-            payload["num_watched_episodes"] = str(progress)
-        if is_rewatching is not None:
-            payload["is_rewatching"] = str(is_rewatching).lower()
-        if start_date is not None:
-            payload["start_date"] = start_date.isoformat()
-        if finish_date is not None:
-            payload["finish_date"] = finish_date.isoformat()
-        if priority is not None:
-            payload["priority"] = str(priority)
-        if num_times_rewatched is not None:
-            payload["num_times_rewatched"] = str(num_times_rewatched)
-        if rewatch_value is not None:
-            payload["rewatch_value"] = str(rewatch_value)
-        if tags:
-            payload["tags"] = ",".join(tags)
-        if comments is not None:
-            payload["comments"] = comments
-
         response = await self._make_request(
             "PATCH",
             f"/anime/{anime_id}/my_list_status",
-            data=payload,
+            data=self._list_status_payload(
+                status=status,
+                score=score,
+                progress=progress,
+                is_rewatching=is_rewatching,
+                start_date=start_date,
+                finish_date=finish_date,
+                priority=priority,
+                num_times_rewatched=num_times_rewatched,
+                rewatch_value=rewatch_value,
+                tags=tags,
+                comments=comments,
+            ),
         )
         status_payload = response.get("my_list_status", response)
         list_status = msgspec.convert(status_payload, type=MyAnimeListStatus)
@@ -508,11 +497,7 @@ class MalClient:
             "client_id": self.client_id,
             "refresh_token": self.refresh_token,
         }
-        headers = {
-            "Accept": "application/json",
-            "User-Agent": "anibridge-mal-provider/"
-            + importlib.metadata.version("anibridge-mal-provider"),
-        }
+        headers = {"Accept": "application/json", "User-Agent": self._user_agent()}
         try:
             async with (
                 aiohttp.ClientSession(headers=headers) as session,
@@ -544,6 +529,49 @@ class MalClient:
         if self._session and not self._session.closed:
             await self._session.close()
         self._session = None
+
+    @staticmethod
+    def _list_status_payload(
+        *,
+        status: MalListStatus | str | None = None,
+        score: int | None = None,
+        progress: int | None = None,
+        is_rewatching: bool | None = None,
+        start_date: date | None = None,
+        finish_date: date | None = None,
+        priority: int | None = None,
+        num_times_rewatched: int | None = None,
+        rewatch_value: int | None = None,
+        tags: Sequence[str] | None = None,
+        comments: str | None = None,
+    ) -> dict[str, str]:
+        """Build a MAL list-status update payload."""
+        payload: dict[str, str] = {}
+        if status is not None:
+            payload["status"] = (
+                status.value if isinstance(status, MalListStatus) else str(status)
+            )
+        if score is not None:
+            payload["score"] = str(score)
+        if progress is not None:
+            payload["num_watched_episodes"] = str(progress)
+        if is_rewatching is not None:
+            payload["is_rewatching"] = str(is_rewatching).lower()
+        if start_date is not None:
+            payload["start_date"] = start_date.isoformat()
+        if finish_date is not None:
+            payload["finish_date"] = finish_date.isoformat()
+        if priority is not None:
+            payload["priority"] = str(priority)
+        if num_times_rewatched is not None:
+            payload["num_times_rewatched"] = str(num_times_rewatched)
+        if rewatch_value is not None:
+            payload["rewatch_value"] = str(rewatch_value)
+        if tags:
+            payload["tags"] = ",".join(tags)
+        if comments is not None:
+            payload["comments"] = comments
+        return payload
 
     async def _make_request(
         self,

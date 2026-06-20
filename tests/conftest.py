@@ -1,18 +1,13 @@
 """Pytest fixtures shared across the provider test-suite."""
 
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import Generator
 from datetime import UTC, date
-from logging import getLogger
-from typing import cast
 
 import pytest
-import pytest_asyncio
 from anibridge.utils.limiter import Limiter
-from anibridge.utils.types import ProviderLogger
 
-from anibridge.providers.list.mal.client import MalClient
-from anibridge.providers.list.mal.list import MalListProvider
-from anibridge.providers.list.mal.models import (
+from anibridge.providers.mal.client import MalClient
+from anibridge.providers.mal.models import (
     Anime,
     AnimePaging,
     AnimePagingData,
@@ -139,21 +134,6 @@ class _FakeMalClient:
 def fake_client() -> _FakeMalClient:
     """Return an isolated fake MAL client instance."""
     return _FakeMalClient()
-
-
-@pytest_asyncio.fixture()
-async def mal_provider(
-    fake_client: _FakeMalClient,
-) -> AsyncGenerator[MalListProvider]:
-    """Yield a MAL list provider wired to the fake client."""
-    provider = MalListProvider(
-        config={"client_id": "id", "token": "refresh"},
-        logger=cast(ProviderLogger, getLogger("anibridge.providers.list.mal")),
-    )
-    provider._client = cast(MalClient, fake_client)
-    await provider.initialize()
-    yield provider
-    await provider.close()
 
 
 @pytest.fixture(autouse=True)
