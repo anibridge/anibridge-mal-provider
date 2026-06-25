@@ -5,7 +5,7 @@ from logging import getLogger
 from typing import Any, cast
 
 import pytest
-from anibridge.provider.base import RecordField
+from anibridge.provider.base import RecordField, Ref, State, Status, UpsertRecord
 
 from anibridge.providers.mal.client import MalClient
 from anibridge.providers.mal.models import Anime, MalListStatus, MyAnimeListStatus
@@ -39,6 +39,46 @@ def test_record_from_anime_preserves_mal_date_precision(provider: MalProvider) -
 
     assert record.values[RecordField.STARTED_AT] == date(2026, 1, 2)
     assert record.values[RecordField.FINISHED_AT] == date(2026, 1, 3)
+
+
+def test_capabilities_include_rewatch_status(provider: MalProvider) -> None:
+    """MAL rewatch support shares MAL's watching native value."""
+    user_state = next(record for record in provider.capabilities().records)
+    status_spec = user_state.fields[RecordField.STATUS]
+    native_by_semantic = {
+        descriptor.semantic: descriptor.native for descriptor in status_spec.values
+    }
+
+    assert native_by_semantic[Status.ACTIVE] == "watching"
+    assert native_by_semantic[Status.REPEATING] == "watching"
+
+
+@pytest.mark.asyncio()
+async def test_repeating_status_writes_mal_rewatching(
+    provider: MalProvider,
+    fake_client: Any,
+) -> None:
+    """A repeating write uses MAL's watching status plus rewatching flag."""
+    fake_client.offline_anime_entries[101] = Anime(id=101, title="Cowboy Bebop")
+
+    results = await provider.write_records(
+        (
+            UpsertRecord(
+                ref=Ref.anchor("101"),
+                surface="anime_list",
+                set={
+                    RecordField.STATUS: State(
+                        native="watching",
+                        status=Status.REPEATING,
+                    )
+                },
+            ),
+        )
+    )
+
+    assert results[0].ok
+    assert fake_client.update_calls[0]["status"] is MalListStatus.WATCHING
+    assert fake_client.update_calls[0]["is_rewatching"] is True
 
 
 def test_date_value_accepts_dates_for_date_precision(provider: MalProvider) -> None:

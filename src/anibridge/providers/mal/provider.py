@@ -31,7 +31,6 @@ from anibridge.provider.base import (
     Rating,
     Record,
     RecordField,
-    RecordKind,
     RecordQuery,
     RecordSpec,
     RecordWrite,
@@ -62,7 +61,7 @@ from anibridge.providers.mal.models import Anime, MalListStatus, MyAnimeListStat
 
 __all__ = ["MalProvider"]
 
-_PROGRESS_KIND = "progress"
+_ANIME_LIST_SURFACE = "anime_list"
 
 _STATUS_TO_NATIVE: dict[Status, MalListStatus] = {
     Status.ACTIVE: MalListStatus.WATCHING,
@@ -136,7 +135,7 @@ class MalProvider(
             nodes=(NodeSpec(Descriptor("anime", NodeKind.SERIES)),),
             records=(
                 RecordSpec(
-                    kind=Descriptor(_PROGRESS_KIND, RecordKind.PROGRESS),
+                    surface=_ANIME_LIST_SURFACE,
                     fields={
                         RecordField.STATUS: FieldSpec(
                             RecordField.STATUS,
@@ -330,13 +329,13 @@ class MalProvider(
         )
 
     async def fetch_records(self, query: RecordQuery) -> Page[Record]:
-        """Fetch MAL progress records by ref or record key."""
+        """Fetch MAL anime-list records by ref or record key."""
         refs = tuple(query.refs)
         if not refs and query.keys:
             refs = tuple(Ref.anchor(key) for key in query.keys)
         if (
-            query.native_record_kinds
-            and _PROGRESS_KIND not in query.native_record_kinds
+            query.record_surfaces
+            and _ANIME_LIST_SURFACE not in query.record_surfaces
         ):
             return Page(items=())
 
@@ -418,7 +417,7 @@ class MalProvider(
 
         return Record(
             ref=Ref.anchor(str(anime.id)),
-            kind=_PROGRESS_KIND,
+            surface=_ANIME_LIST_SURFACE,
             key=str(anime.id),
             ids=(ExternalId(self.NAMESPACE, str(anime.id)),),
             values=values,
