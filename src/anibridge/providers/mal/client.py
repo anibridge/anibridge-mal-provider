@@ -171,10 +171,7 @@ class MalClient:
 
     def _cached(self, anime_id: int) -> Anime | None:
         """Return anime from user-list cache or general TTL cache."""
-        hit = self._list_cache.get(anime_id) or self._media_cache.get(anime_id)
-        if hit:
-            self.log.debug("Cache hit $${mal_id: %s}$$", anime_id)
-        return hit
+        return self._list_cache.get(anime_id) or self._media_cache.get(anime_id)
 
     def _remember(self, anime: Anime) -> None:
         """Store anime in shared caches."""

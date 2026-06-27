@@ -333,10 +333,7 @@ class MalProvider(
         refs = tuple(query.refs)
         if not refs and query.keys:
             refs = tuple(Ref.anchor(key) for key in query.keys)
-        if (
-            query.record_surfaces
-            and _ANIME_LIST_SURFACE not in query.record_surfaces
-        ):
+        if query.record_surfaces and _ANIME_LIST_SURFACE not in query.record_surfaces:
             return Page(items=())
 
         records: list[Record] = []
@@ -348,7 +345,7 @@ class MalProvider(
             except ValueError:
                 self.log.warning("Invalid MAL media ref %s", ref.key)
                 continue
-                records.append(self._record_from_anime(anime, query.fields))
+            records.append(self._record_from_anime(anime, query.fields))
         return Page(items=tuple(records))
 
     async def write_records(

@@ -5,7 +5,14 @@ from logging import getLogger
 from typing import Any, cast
 
 import pytest
-from anibridge.provider.base import RecordField, Ref, State, Status, UpsertRecord
+from anibridge.provider.base import (
+    RecordField,
+    RecordQuery,
+    Ref,
+    State,
+    Status,
+    UpsertRecord,
+)
 
 from anibridge.providers.mal.client import MalClient
 from anibridge.providers.mal.models import Anime, MalListStatus, MyAnimeListStatus
@@ -39,6 +46,37 @@ def test_record_from_anime_preserves_mal_date_precision(provider: MalProvider) -
 
     assert record.values[RecordField.STARTED_AT] == date(2026, 1, 2)
     assert record.values[RecordField.FINISHED_AT] == date(2026, 1, 3)
+
+
+@pytest.mark.asyncio()
+async def test_fetch_records_returns_existing_mal_list_state(
+    provider: MalProvider,
+    fake_client: Any,
+) -> None:
+    """MAL target record reads should return fetched list state."""
+    fake_client.offline_anime_entries[101] = Anime(
+        id=101,
+        title="Cowboy Bebop",
+        my_list_status=MyAnimeListStatus(
+            status=MalListStatus.WATCHING,
+            score=8,
+            num_episodes_watched=4,
+        ),
+    )
+
+    page = await provider.fetch_records(
+        RecordQuery(refs=(Ref.anchor("101"),), record_surfaces=("anime_list",))
+    )
+
+    assert len(page.items) == 1
+    record = page.items[0]
+    assert record.ref == Ref.anchor("101")
+    assert record.values[RecordField.STATUS] == State(
+        native="watching",
+        status=Status.ACTIVE,
+    )
+    assert record.values[RecordField.RATING].value == 8
+    assert record.values[RecordField.PROGRESS].current == 4
 
 
 def test_capabilities_include_rewatch_status(provider: MalProvider) -> None:
