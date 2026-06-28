@@ -35,6 +35,7 @@ class MalClient:
     """Client for the MAL REST API."""
 
     API_URL: ClassVar[str] = "https://api.myanimelist.net/v2"
+    _MEDIA_CACHE_TTL_SECONDS: ClassVar[float] = 43200.0
     _LIST_REFRESH_DEBOUNCE_SECONDS: ClassVar[float] = 60.0
     _LIST_REFRESH_MAX_STALENESS_SECONDS: ClassVar[float] = 1800.0
 
@@ -102,7 +103,9 @@ class MalClient:
         self._list_cache_dirty = False
         self._last_list_refresh_at = time.monotonic()
         self._list_cache: dict[int, Anime] = {}
-        self._media_cache: TTLDict[int, Anime] = TTLDict(ttl=43200)
+        self._media_cache: TTLDict[int, Anime] = TTLDict(
+            ttl=self._MEDIA_CACHE_TTL_SECONDS
+        )
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create the aiohttp session."""
@@ -120,9 +123,8 @@ class MalClient:
             await self._session.close()
 
     def clear_cache(self) -> None:
-        """Clear in-memory caches for user list and general media lookups."""
+        """Clear user-list state while keeping general media metadata."""
         self._list_cache.clear()
-        self._media_cache.clear()
         self._list_cache_dirty = False
         self._last_list_refresh_at = time.monotonic()
         self._invalidate_cached_views()
@@ -297,7 +299,10 @@ class MalClient:
             cached = self._cached(anime_id)
             if cached is not None:
                 return cached
-        return await self._fetch_anime(anime_id, fields=fields)
+
+        anime = await self._fetch_anime(anime_id, fields=fields)
+        self._remember(anime)
+        return anime
 
     async def _fetch_anime(
         self,
@@ -314,7 +319,6 @@ class MalClient:
         self.log.debug("Pulling MAL data from API $${mal_id: %s}$$", anime_id)
         response = await self._make_request("GET", f"/anime/{anime_id}", params=params)
         anime = msgspec.convert(response, type=Anime)
-        self._remember(anime)
         return anime
 
     async def get_user_anime_list(

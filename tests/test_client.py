@@ -122,7 +122,7 @@ async def test_initialize_sets_user_timezone_and_primes_cache(
     mal_client: MalClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """initialize should refresh auth, resolve user, and preload list cache."""
+    """Initialize should refresh auth, resolve user, and preload list cache."""
     calls: list[str] = []
 
     async def fake_refresh() -> None:
@@ -215,6 +215,36 @@ async def test_get_anime_cache_and_force_refresh(
     fresh = await mal_client.get_anime(7, force_refresh=True)
     assert fresh.title == "Fresh"
     assert mal_client._media_cache[7].title == "Fresh"
+
+
+@pytest.mark.asyncio
+async def test_clear_cache_preserves_media_metadata(
+    mal_client: MalClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """clear_cache should keep metadata for sync-history node reads."""
+    calls = 0
+
+    async def fake_make_request(
+        method: str, path: str, **kwargs: Any
+    ) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        assert method == "GET"
+        assert path == "/anime/7"
+        return {"id": 7, "title": "Cached"}
+
+    monkeypatch.setattr(mal_client, "_make_request", fake_make_request)
+
+    fetched = await mal_client.get_anime(7)
+    mal_client._list_cache[7] = Anime(id=7, title="Listed")
+    mal_client.clear_cache()
+    fetched_after_clear = await mal_client.get_anime(7)
+
+    assert fetched.title == "Cached"
+    assert fetched_after_clear.title == "Cached"
+    assert mal_client._list_cache == {}
+    assert calls == 1
 
 
 @pytest.mark.asyncio
@@ -599,7 +629,7 @@ def test_parse_date_variants() -> None:
 
 @pytest.mark.asyncio
 async def test_close_closes_active_session(mal_client: MalClient) -> None:
-    """close should close the active session when present."""
+    """Close should close the active session when present."""
 
     class _Closable:
         def __init__(self) -> None:
