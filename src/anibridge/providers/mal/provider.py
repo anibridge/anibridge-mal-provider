@@ -34,6 +34,7 @@ from anibridge.provider.base import (
     RecordQuery,
     RecordSpec,
     RecordWrite,
+    RecordWriteOp,
     Ref,
     Role,
     State,
@@ -51,7 +52,6 @@ from anibridge.provider.base import (
     UpsertRecord,
     Value,
     WriteError,
-    WriteOp,
     WriteResult,
 )
 
@@ -193,7 +193,7 @@ class MalProvider(
                             constraints=(TextConstraint(max_length=65535),),
                         ),
                     },
-                    write_ops=frozenset({WriteOp.UPSERT_RECORD, WriteOp.DELETE_RECORD}),
+                    write_ops=frozenset({RecordWriteOp.UPSERT, RecordWriteOp.DELETE}),
                 ),
             ),
             external_authorities=frozenset({self.NAMESPACE}),
@@ -362,9 +362,9 @@ class MalProvider(
                     result = await self._delete_record(write)
             except Exception as exc:
                 op = (
-                    WriteOp.DELETE_RECORD
+                    RecordWriteOp.DELETE
                     if isinstance(write, DeleteRecord)
-                    else WriteOp.UPSERT_RECORD
+                    else RecordWriteOp.UPSERT
                 )
                 result = WriteResult(
                     ok=False,
@@ -527,7 +527,7 @@ class MalProvider(
         current.my_list_status = saved
         return WriteResult(
             ok=True,
-            op=WriteOp.UPSERT_RECORD,
+            op=RecordWriteOp.UPSERT,
             token=write.token,
             key=str(anime_id),
             ref=write.ref,
@@ -544,7 +544,7 @@ class MalProvider(
         if ref is None:
             return WriteResult(
                 ok=False,
-                op=WriteOp.DELETE_RECORD,
+                op=RecordWriteOp.DELETE,
                 token=write.token,
                 code=WriteError.INVALID,
                 error="MAL delete requires a ref",
@@ -552,7 +552,7 @@ class MalProvider(
         await self._client.delete_anime_status(int(ref.key))
         return WriteResult(
             ok=True,
-            op=WriteOp.DELETE_RECORD,
+            op=RecordWriteOp.DELETE,
             token=write.token,
             ref=ref,
             key=ref.key,
