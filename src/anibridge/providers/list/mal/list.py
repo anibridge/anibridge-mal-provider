@@ -2,9 +2,10 @@
 
 import json
 from collections.abc import Sequence
+from copy import deepcopy
 from datetime import datetime
 from json import JSONDecodeError
-from typing import Any, cast
+from typing import Any, Self, cast
 
 import msgspec
 from anibridge.list import (
@@ -138,6 +139,13 @@ class MalListEntry(ListEntry["MalListProvider"]):
 
         self._key = str(anime.id)
         self._title = anime.title
+        self._changed_fields: set[str] = set()
+
+    def __copy__(self) -> Self:
+        """Return an isolated entry for planning list updates."""
+        anime = deepcopy(self._anime)
+        anime.my_list_status = deepcopy(self._status)
+        return type(self)(self._provider, anime)
 
     @property
     def status(self) -> ListStatus | None:
@@ -151,6 +159,7 @@ class MalListEntry(ListEntry["MalListProvider"]):
         self._status.status = mal_status
         if value is not None:
             self._status.is_rewatching = is_rewatching
+        self._changed_fields.add("status")
 
     @property
     def progress(self) -> int:
@@ -160,10 +169,12 @@ class MalListEntry(ListEntry["MalListProvider"]):
     def progress(self, value: int | None) -> None:
         if value is None:
             self._status.num_episodes_watched = None
+            self._changed_fields.add("progress")
             return
         if value < 0:
             raise ValueError("Progress cannot be negative.")
         self._status.num_episodes_watched = value
+        self._changed_fields.add("progress")
 
     @property
     def repeats(self) -> int:
@@ -173,10 +184,12 @@ class MalListEntry(ListEntry["MalListProvider"]):
     def repeats(self, value: int | None) -> None:
         if value is None:
             self._status.num_times_rewatched = None
+            self._changed_fields.add("repeats")
             return
         if value < 0:
             raise ValueError("Repeat count cannot be negative.")
         self._status.num_times_rewatched = value
+        self._changed_fields.add("repeats")
 
     @property
     def review(self) -> str | None:
@@ -185,6 +198,7 @@ class MalListEntry(ListEntry["MalListProvider"]):
     @review.setter
     def review(self, value: str | None) -> None:
         self._status.comments = value
+        self._changed_fields.add("review")
 
     @property
     def user_rating(self) -> int | None:
@@ -196,10 +210,12 @@ class MalListEntry(ListEntry["MalListProvider"]):
     def user_rating(self, value: int | None) -> None:
         if value is None:
             self._status.score = None
+            self._changed_fields.add("user_rating")
             return
         if value < 0 or value > 100:
             raise ValueError("Ratings must be between 0 and 100.")
         self._status.score = round(value / 10)
+        self._changed_fields.add("user_rating")
 
     @property
     def started_at(self) -> datetime | None:
@@ -215,12 +231,14 @@ class MalListEntry(ListEntry["MalListProvider"]):
     def started_at(self, value: datetime | None) -> None:
         if value is None:
             self._status.start_date = None
+            self._changed_fields.add("started_at")
             return
         if value.tzinfo is None:
             value = value.replace(tzinfo=self._provider._client.user_timezone)
         else:
             value = value.astimezone(self._provider._client.user_timezone)
         self._status.start_date = value.date()
+        self._changed_fields.add("started_at")
 
     @property
     def finished_at(self) -> datetime | None:
@@ -236,12 +254,14 @@ class MalListEntry(ListEntry["MalListProvider"]):
     def finished_at(self, value: datetime | None) -> None:
         if value is None:
             self._status.finish_date = None
+            self._changed_fields.add("finished_at")
             return
         if value.tzinfo is None:
             value = value.replace(tzinfo=self._provider._client.user_timezone)
         else:
             value = value.astimezone(self._provider._client.user_timezone)
         self._status.finish_date = value.date()
+        self._changed_fields.add("finished_at")
 
     @property
     def total_units(self) -> int | None:
@@ -395,21 +415,59 @@ class MalListProvider(ListProvider):
     async def update_entry(self, key: str, entry: ListEntry) -> None:
         """Update a MAL list entry and refresh local cache."""
         mal_entry = cast(MalListEntry, entry)
-        status_value, is_rewatching = _list_status_to_mal(mal_entry.status)
+        changed_fields = mal_entry._changed_fields.copy()
+        if not changed_fields:
+            self.log.debug("Skipping unchanged MAL entry for anime id %s", key)
+            return
+
+        previous_status = deepcopy(mal_entry._status)
+        update_values: dict[str, Any] = {}
+        if "status" in changed_fields:
+            status_value, is_rewatching = _list_status_to_mal(mal_entry.status)
+            update_values["status"] = status_value
+            update_values["is_rewatching"] = is_rewatching or bool(
+                mal_entry._status.is_rewatching
+            )
+        if "user_rating" in changed_fields:
+            update_values["score"] = mal_entry._status.score
+        if "progress" in changed_fields:
+            update_values["progress"] = mal_entry._status.num_episodes_watched
+        if "started_at" in changed_fields:
+            update_values["start_date"] = mal_entry._status.start_date
+        if "finished_at" in changed_fields:
+            update_values["finish_date"] = mal_entry._status.finish_date
+        if "repeats" in changed_fields:
+            update_values["num_times_rewatched"] = mal_entry._status.num_times_rewatched
+        if "review" in changed_fields:
+            update_values["comments"] = mal_entry._status.comments
+
         response = await self._client.update_anime_status(
             anime_id=int(key),
-            status=status_value,
-            score=mal_entry._status.score,
-            progress=mal_entry.progress,
-            is_rewatching=is_rewatching or bool(mal_entry._status.is_rewatching),
-            start_date=mal_entry._status.start_date,
-            finish_date=mal_entry._status.finish_date,
-            num_times_rewatched=mal_entry._status.num_times_rewatched,
-            comments=mal_entry._status.comments,
-            tags=mal_entry._status.tags,
+            **update_values,
         )
+
+        if "status" not in changed_fields:
+            response.status = previous_status.status
+            response.is_rewatching = previous_status.is_rewatching
+        if "user_rating" not in changed_fields:
+            response.score = previous_status.score
+        if "progress" not in changed_fields:
+            response.num_episodes_watched = previous_status.num_episodes_watched
+        if "started_at" not in changed_fields:
+            response.start_date = previous_status.start_date
+        if "finished_at" not in changed_fields:
+            response.finish_date = previous_status.finish_date
+        if "repeats" not in changed_fields:
+            response.num_times_rewatched = previous_status.num_times_rewatched
+        if "review" not in changed_fields:
+            response.comments = previous_status.comments
+        response.priority = previous_status.priority
+        response.rewatch_value = previous_status.rewatch_value
+        response.tags = previous_status.tags
+
         mal_entry._status = response
         mal_entry._anime.my_list_status = response
+        mal_entry._changed_fields.clear()
         self.log.debug("Updated MAL entry for anime id %s", key)
 
     async def clear_cache(self) -> None:

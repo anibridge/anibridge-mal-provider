@@ -2,6 +2,7 @@
 
 import json
 import logging
+from copy import copy
 from datetime import UTC, date, datetime
 from typing import cast
 
@@ -133,6 +134,119 @@ async def test_entry_validations_and_conversion(mal_provider, fake_client) -> No
         entry.progress = -1
     with pytest.raises(ValueError):
         entry.repeats = -1
+
+
+@pytest.mark.asyncio
+async def test_progress_update_does_not_resubmit_comments(
+    mal_provider, fake_client
+) -> None:
+    """Progress-only updates should preserve and omit existing MAL comments."""
+    comments = "line 1\nline 2<br />line 3"
+    anime = Anime(
+        id=43,
+        title="Commented Show",
+        my_list_status=MyAnimeListStatus(
+            status=MalListStatus.WATCHING,
+            num_episodes_watched=1,
+            tags=["source"],
+            comments=comments,
+        ),
+    )
+    fake_client.offline_anime_entries[anime.id] = anime
+    source_entry = MalListEntry(mal_provider, anime)
+    planned_entry = copy(source_entry)
+
+    planned_entry.progress = 2
+    planned_entry._status.tags.append("planned")
+    await mal_provider.update_entry(planned_entry.media().key, planned_entry)
+
+    assert source_entry.progress == 1
+    assert source_entry.review == comments
+    assert source_entry._status.tags == ["source"]
+    assert planned_entry.review == comments
+    assert fake_client.update_calls[-1]["comments"] is None
+    assert fake_client.update_calls[-1]["tags"] == []
+
+
+@pytest.mark.asyncio
+async def test_repeating_update_sends_mal_rewatch_flag(
+    mal_provider, fake_client
+) -> None:
+    """Repeating updates should send MAL's watching status and rewatch flag."""
+    anime = Anime(
+        id=44,
+        title="Repeating Show",
+        my_list_status=MyAnimeListStatus(status=MalListStatus.WATCHING),
+    )
+    fake_client.offline_anime_entries[anime.id] = anime
+    source_entry = MalListEntry(mal_provider, anime)
+    planned_entry = copy(source_entry)
+
+    planned_entry.status = ListStatus.REPEATING
+    await mal_provider.update_entry(planned_entry.media().key, planned_entry)
+
+    update = fake_client.update_calls[-1]
+    assert update["status"] is MalListStatus.WATCHING
+    assert update["is_rewatching"] is True
+    assert update["comments"] is None
+    assert source_entry.status is ListStatus.CURRENT
+    assert planned_entry.status is ListStatus.REPEATING
+
+
+@pytest.mark.asyncio
+async def test_update_entry_skips_unchanged_entry(mal_provider, fake_client) -> None:
+    """Unmodified entries should not trigger an empty MAL PATCH request."""
+    anime = Anime(
+        id=45,
+        title="Unchanged Show",
+        my_list_status=MyAnimeListStatus(status=MalListStatus.PLAN_TO_WATCH),
+    )
+    entry = MalListEntry(mal_provider, anime)
+
+    await mal_provider.update_entry(entry.media().key, entry)
+
+    assert fake_client.update_calls == []
+
+
+@pytest.mark.asyncio
+async def test_batch_updates_keep_independent_field_masks(
+    mal_provider, fake_client
+) -> None:
+    """Sequential MAL batch updates should not leak fields between entries."""
+    progress_anime = Anime(
+        id=46,
+        title="Progress Show",
+        my_list_status=MyAnimeListStatus(
+            status=MalListStatus.WATCHING,
+            num_episodes_watched=1,
+            comments="keep",
+        ),
+    )
+    review_anime = Anime(
+        id=47,
+        title="Review Show",
+        my_list_status=MyAnimeListStatus(
+            status=MalListStatus.COMPLETED,
+            num_episodes_watched=12,
+            comments="old",
+        ),
+    )
+    fake_client.offline_anime_entries = {
+        progress_anime.id: progress_anime,
+        review_anime.id: review_anime,
+    }
+    progress_entry = copy(MalListEntry(mal_provider, progress_anime))
+    review_entry = copy(MalListEntry(mal_provider, review_anime))
+    progress_entry.progress = 2
+    review_entry.review = "new"
+
+    await mal_provider.update_entries_batch([progress_entry, review_entry])
+
+    progress_update, review_update = fake_client.update_calls
+    assert progress_update["progress"] == 2
+    assert progress_update["comments"] is None
+    assert review_update["progress"] is None
+    assert review_update["comments"] == "new"
 
 
 @pytest.mark.asyncio

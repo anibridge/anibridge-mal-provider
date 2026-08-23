@@ -308,9 +308,14 @@ async def test_update_and_delete_anime_status_auth_and_payload(
     assert captured[0]["method"] == "PATCH"
     assert captured[0]["data"]["status"] == "completed"
     assert captured[0]["data"]["num_watched_episodes"] == "12"
+    assert captured[0]["data"]["is_rewatching"] == "true"
+    assert captured[0]["data"]["comments"] == "done"
+
+    await mal_client.update_anime_status(42, progress=13)
+    assert captured[1]["data"] == {"num_watched_episodes": "13"}
 
     await mal_client.delete_anime_status(42)
-    assert captured[1]["method"] == "DELETE"
+    assert captured[2]["method"] == "DELETE"
 
 
 @pytest.mark.asyncio
