@@ -28,6 +28,10 @@ from anibridge.providers.list.mal.models import (
 def test_status_mapping_helpers() -> None:
     """Ensure status mapping helpers convert between AniBridge and MAL enums."""
     assert _mal_status_to_list(MalListStatus.WATCHING) is ListStatus.CURRENT
+    assert (
+        _mal_status_to_list(MalListStatus.WATCHING, is_rewatching=True)
+        is ListStatus.REPEATING
+    )
     assert _mal_status_to_list(MalListStatus.COMPLETED) is ListStatus.COMPLETED
     assert _mal_status_to_list(MalListStatus.PLAN_TO_WATCH) is ListStatus.PLANNING
     assert _mal_status_to_list("unknown") is None

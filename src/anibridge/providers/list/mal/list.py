@@ -29,7 +29,9 @@ from anibridge.providers.list.mal.models import (
 __all__ = ["MalListProvider"]
 
 
-def _mal_status_to_list(status: MalListStatus | str | None) -> ListStatus | None:
+def _mal_status_to_list(
+    status: MalListStatus | str | None, *, is_rewatching: bool | None = None
+) -> ListStatus | None:
     if status is None:
         return None
     mapping = {
@@ -43,6 +45,8 @@ def _mal_status_to_list(status: MalListStatus | str | None) -> ListStatus | None
         enum_status = MalListStatus(status)
     except ValueError:
         return None
+    if enum_status is MalListStatus.WATCHING and is_rewatching:
+        return ListStatus.REPEATING
     return mapping.get(enum_status)
 
 
@@ -137,7 +141,9 @@ class MalListEntry(ListEntry["MalListProvider"]):
 
     @property
     def status(self) -> ListStatus | None:
-        return _mal_status_to_list(self._status.status)
+        return _mal_status_to_list(
+            self._status.status, is_rewatching=self._status.is_rewatching
+        )
 
     @status.setter
     def status(self, value: ListStatus | None) -> None:
