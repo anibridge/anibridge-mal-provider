@@ -8,7 +8,7 @@ from typing import Any
 import msgspec
 
 
-def _parse_date(value: Any) -> date | None | Any:
+def _parse_date(value: Any) -> date | Any | None:
     if value in (None, ""):
         return None
     if isinstance(value, datetime):
@@ -30,7 +30,7 @@ def _parse_date(value: Any) -> date | None | Any:
         return None
 
 
-def _parse_datetime(value: Any) -> datetime | None | Any:
+def _parse_datetime(value: Any) -> datetime | Any | None:
     if value in (None, ""):
         return None
     if isinstance(value, datetime):
